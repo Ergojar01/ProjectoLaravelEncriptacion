@@ -26,3 +26,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Configurar permisos para que el usuario de Apache pueda escribir en la carpeta
 RUN chown -R www-data:www-data /var/www/html
+
+# Instalar Node.js y npm directamente en la imagen de Docker
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs

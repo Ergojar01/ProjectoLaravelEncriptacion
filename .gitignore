@@ -1,27 +1,36 @@
-*.log
-.DS_Store
-.env
+# Dependencias de Composer y Node
+/vendor
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Archivos de entorno (nunca subir credenciales)
+# colocar env
 .env.backup
 .env.production
-.phpactor.json
+
+# Archivos autogenerados y caché de Laravel
+public/build
+public/hot
+public/storage
+storage/*.key
+/storage/app/public
+/storage/framework/cache/data
+/storage/framework/events
+/storage/framework/sessions
+/storage/framework/testing
+/storage/framework/views
+/storage/logs
+
+# Testing
 .phpunit.result.cache
-/.codex
-/.cursor/
-/.idea
-/.nova
-/.phpunit.cache
-/.vscode
-/.zed
-/auth.json
-/node_modules
-/public/build
-/public/fonts-manifest.dev.json
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
-_ide_helper.php
+
+# Entornos locales e IDEs
 Homestead.json
 Homestead.yaml
-Thumbs.db
+/.fleet
+/.idea
+/.vscode
+
+# Ignorar la persistencia de datos de MySQL en Docker
+/docker/mysql/data

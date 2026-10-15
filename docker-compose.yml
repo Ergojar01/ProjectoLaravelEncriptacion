@@ -15,6 +15,7 @@ services:
       - db
     networks:
       - laravel_network
+    command: bash -c "npm install && npm run build && apache2-foreground"
 
   db:
     image: mysql:8.0

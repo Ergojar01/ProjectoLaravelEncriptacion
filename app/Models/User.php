@@ -2,31 +2,59 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'salt',
+        'crypto_version',
+        'role_level',
+    ];
+
+    protected $hidden = [
+        'password',
+        'salt',
+        'remember_token',
+    ];
+
+    // IMPORTANTE: sin 'password' => 'hashed'. Si lo agregas, Laravel aplica bcrypt
+    // encima de nuestro hash y el login nunca coincide.
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'role_level'        => 'integer',
         ];
+    }
+
+    public function getRoleNameAttribute(): string
+    {
+        return match (true) {
+            $this->role_level >= 500 => 'Administrador',
+            $this->role_level >= 499 => 'Visualizador',
+            default                  => 'Usuario básico',
+        };
+    }
+
+    public function getRoleClassAttribute(): string
+    {
+        return match (true) {
+            $this->role_level >= 500 => 'b-500',
+            $this->role_level >= 499 => 'b-499',
+            default                  => 'b-300',
+        };
+    }
+
+    public function getInitialsAttribute(): string
+    {
+        return mb_strtoupper(mb_substr($this->name, 0, 1));
     }
 }

@@ -1,30 +1,34 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
-
-        <title>{{ config('app.name', 'Laravel') }}</title>
-
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
-        <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    </head>
-    <body class="font-sans text-gray-900 antialiased">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100">
-            <div>
-                <a href="/">
-                    <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
-                </a>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@yield('title') · SecureAccess</title>
+    <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
+</head>
+<body class="guest">
+<div class="split">
+    <section class="hero">
+        <div>
+            <div class="brand">
+                <svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>Secure<b>Access</b></span>
             </div>
-
-            <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white shadow-md overflow-hidden sm:rounded-lg">
-                {{ $slot }}
-            </div>
+            <h1>Acceso seguro.<br>Datos protegidos.</h1>
+            <p>Plataforma de gestión de usuarios con control de acceso por niveles y credenciales protegidas criptográficamente.</p>
+            <ul class="feat">
+                <li>SHA-512 con sal aleatoria única de 256 bits por usuario</li>
+                <li>Pimienta secreta almacenada fuera de la base de datos</li>
+                <li>Control de acceso por niveles de permiso: 500 · 499 · 300</li>
+            </ul>
         </div>
-    </body>
+        <small>© {{ date('Y') }} SecureAccess. Todos los derechos reservados.</small>
+    </section>
+
+    <section class="panel">
+        <div class="auth-card">@yield('content')</div>
+    </section>
+</div>
+<script src="{{ asset('js/ui.js') }}" defer></script>
+</body>
 </html>

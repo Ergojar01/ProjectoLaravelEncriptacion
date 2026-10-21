@@ -1,17 +1,21 @@
-<x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Panel de 300 Acceso Básico') }}
-        </h2>
-    </x-slot>
+@extends('layouts.app')
+@section('title', 'Inicio')
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-                    {{ __("tienes el acceso basico") }}
-                </div>
-            </div>
+@section('content')
+    <div class="page-head">
+        <div>
+            <h1>Bienvenido, {{ $user->name }}</h1>
+            <p>Tu cuenta está activa.</p>
         </div>
     </div>
-</x-app-layout>
+
+    <div class="card" style="max-width:560px">
+        <div class="card-head"><h3>Mi cuenta</h3></div>
+        <ul class="kv">
+            <li><span>Nombre</span><b>{{ $user->name }}</b></li>
+            <li><span>Correo</span><b>{{ $user->email }}</b></li>
+            <li><span>Nivel de acceso</span><b><span class="badge {{ $user->role_class }}">{{ $user->role_level }} · {{ $user->role_name }}</span></b></li>
+            <li><span>Permisos</span><b>Acceso mínimo al panel</b></li>
+        </ul>
+    </div>
+@endsection

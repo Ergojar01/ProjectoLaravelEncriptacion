@@ -33,4 +33,4 @@ Homestead.yaml
 /.vscode
 
 # Ignorar la persistencia de datos de MySQL en Docker
-/docker/mysql/data
+/docker/mysql/data.env

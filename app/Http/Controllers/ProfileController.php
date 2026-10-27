@@ -2,59 +2,60 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ProfileUpdateRequest;
+use App\Services\CredentialHasher;
+use App\Support\PasswordPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    /**
-     * Display the user's profile form.
-     */
     public function edit(Request $request): View
     {
-        return view('profile.edit', [
-            'user' => $request->user(),
-        ]);
+        return view('profile.edit', ['user' => $request->user()]);
     }
 
     /**
-     * Update the user's profile information.
+     * Cambia la contraseña respetando el esquema criptográfico propio:
+     * sal nueva de 256 bits + PBKDF2-SHA512 + XOR + sello HMAC.
+     * No usa Hash::make (bcrypt) para no romper el login.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function updatePassword(Request $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $key  = 'pwchange:' . $user->id . '|' . $request->ip();
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $seconds = RateLimiter::availableIn($key);
+
+            return back()->withErrors([
+                'current_password' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos.",
+            ]);
         }
 
-        $request->user()->save();
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password'         => ['required', 'confirmed', 'different:current_password', PasswordPolicy::rule()],
+        ], PasswordPolicy::messages());
 
-        return Redirect::route('profile.edit')->with('status', 'profile-updated');
-    }
+        if (! CredentialHasher::check($user->email, $data['current_password'], $user->salt, $user->password)) {
+            RateLimiter::hit($key, 300);
 
-    /**
-     * Delete the user's account.
-     */
-    public function destroy(Request $request): RedirectResponse
-    {
-        $request->validateWithBag('userDeletion', [
-            'password' => ['required', 'current_password'],
-        ]);
+            return back()->withErrors(['current_password' => 'La contraseña actual no es correcta.']);
+        }
 
-        $user = $request->user();
+        $salt = CredentialHasher::newSalt();
 
-        Auth::logout();
+        $user->forceFill([
+            'salt'           => $salt,
+            'password'       => CredentialHasher::make($user->email, $data['password'], $salt),
+            'crypto_version' => config('crypto.version'),
+        ])->save();
 
-        $user->delete();
+        RateLimiter::clear($key);
+        $request->session()->regenerate();
 
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return Redirect::to('/');
+        return back()->with('status', 'Contraseña actualizada. Se generó una sal nueva y se volvió a sellar.');
     }
 }

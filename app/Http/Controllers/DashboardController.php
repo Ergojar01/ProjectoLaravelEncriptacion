@@ -2,33 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
+    /**
+     * Los tres niveles (500, 499 y 300) ven exactamente la misma pantalla de
+     * bienvenida. Los permisos se siguen aplicando en el servidor (middleware role).
+     */
     public function index()
     {
-        $user  = Auth::user();
-        $level = (int) $user->role_level;
-        $data  = ['user' => $user];
-
-        if ($level >= 499) {
-            $data['stats'] = [
-                'total'   => User::count(),
-                'admins'  => User::where('role_level', '>=', 500)->count(),
-                'viewers' => User::where('role_level', 499)->count(),
-                'basic'   => User::where('role_level', '<', 499)->count(),
-            ];
-            $data['recent'] = User::latest()->take(5)->get();
-        }
-
-        $view = match (true) {
-            $level >= 500 => 'dashboard.admin',
-            $level >= 499 => 'dashboard.viewer',
-            default       => 'dashboard.basic',
-        };
-
-        return view($view, $data);
+        return view('dashboard.home', ['user' => Auth::user()]);
     }
 }

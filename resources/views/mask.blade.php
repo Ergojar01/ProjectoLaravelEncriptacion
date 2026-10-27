@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>SecureAccess - Portal</title>
+    @include('layouts._head')
+    <title>One Piece Haki Encryption</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #f3f4f6; }
-        /* Usamos 100vw (ancho de ventana) y 100vh (alto de ventana) */
-        iframe { width: 100vw; height: 100vh; border: none; display: block; }
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #061226; }
+        iframe { width: 100vw; height: 100vh; border: 0; display: block; }
     </style>
 </head>
 <body>
-    <iframe src="{{ route('dashboard') }}"></iframe>
+    <iframe src="{{ route('dashboard') }}" title="One Piece Haki Encryption"></iframe>
 </body>
 </html>

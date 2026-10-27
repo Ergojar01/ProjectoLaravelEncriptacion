@@ -12,9 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //Registramos el alias 'role' para usarlo en las rutas
+        // Alias usados en las rutas
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRoleLevel::class,
+            'role'   => \App\Http\Middleware\CheckRoleLevel::class,
+            'framed' => \App\Http\Middleware\FramedOnly::class,
+        ]);
+
+        // Cabeceras de seguridad en todas las respuestas web
+        $middleware->web(append: [
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

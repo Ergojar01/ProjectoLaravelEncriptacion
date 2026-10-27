@@ -1,29 +1,29 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Panel') · SecureAccess</title>
-    <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
+    @include('layouts._head')
+    <title>@yield('title', 'Panel') · One Piece Haki Encryption</title>
 </head>
 <body class="app">
 <aside class="sidebar">
     <div class="brand">
-        <svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
-        <span>Secure<b>Access</b></span>
+        <x-op-logo class="logo" />
+        <span>One Piece <b>Haki Encryption</b></span>
     </div>
 
-    <nav class="nav">
-        <span class="nav-label">General</span>
+    <nav class="nav" aria-label="Principal">
+        <span class="nav-label">Cubierta</span>
         <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
-            <svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg> Inicio
+            <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v10a1 1 0 01-1 1h-5v-7H9v7H4a1 1 0 01-1-1z"/></svg> Inicio
+        </a>
+        <a href="{{ route('profile.edit') }}" class="{{ request()->routeIs('profile.*') ? 'active' : '' }}">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg> Mi perfil
         </a>
 
-        @if(auth()->user()->role_level >= 499)
-            <span class="nav-label">Administración</span>
+        @if(auth()->user()->role_level >= 500)
+            <span class="nav-label">Capitanía</span>
             <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Usuarios
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación
             </a>
         @endif
     </nav>
@@ -45,16 +45,16 @@
 
 <div class="main">
     <header class="topbar">
-        <button class="menu-btn" data-menu type="button" aria-label="Menú">☰</button>
-        <div class="crumb">Panel / <b>@yield('title')</b></div>
+        <button class="menu-btn" data-menu type="button" aria-label="Abrir menú">☰</button>
+        <div class="crumb">@yield('title')</div>
         <div class="top-right">
-            <span class="badge {{ auth()->user()->role_class }}">Nivel {{ auth()->user()->role_level }} · {{ auth()->user()->role_name }}</span>
+            <span class="badge {{ auth()->user()->role_class }}">Nivel {{ auth()->user()->role_level }}</span>
         </div>
     </header>
 
     <main class="content">
-        @if(session('status')) <div class="alert alert-ok">{{ session('status') }}</div> @endif
-        @if(session('error'))  <div class="alert alert-error">{{ session('error') }}</div> @endif
+        @if(session('status')) <div class="alert alert-ok" role="status">{{ session('status') }}</div> @endif
+        @if(session('error'))  <div class="alert alert-error" role="alert">{{ session('error') }}</div> @endif
         @yield('content')
     </main>
 </div>

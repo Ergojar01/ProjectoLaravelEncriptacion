@@ -2,11 +2,11 @@
 @section('title', 'Crear cuenta')
 
 @section('content')
-    <h2 class="auth-title">Crear cuenta</h2>
+    <h2 class="auth-title">Súmate a la tripulación</h2>
     <p class="muted auth-sub">Tu cuenta se crea con acceso básico (nivel 300).</p>
 
     @if($errors->any())
-        <div class="alert alert-error">
+        <div class="alert alert-error" role="alert">
             @foreach($errors->all() as $error) <div>{{ $error }}</div> @endforeach
         </div>
     @endif
@@ -19,7 +19,7 @@
         </div>
         <div class="field">
             <label for="email">Correo electrónico</label>
-            <input id="email" name="email" type="email" value="{{ old('email') }}" placeholder="usuario@empresa.com" autocomplete="username" required>
+            <input id="email" name="email" type="email" value="{{ old('email') }}" placeholder="nakama@grandline.com" autocomplete="username" required>
         </div>
         <div class="field">
             <label for="password">Contraseña</label>

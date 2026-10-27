@@ -2,6 +2,13 @@
 @section('title', 'Iniciar sesión')
 
 @section('content')
+    <!-- SCRIPT DE ESCAPE DEL IFRAME -->
+    <script>
+        if (window.self !== window.top) {
+            window.top.location.href = '{{ route("login") }}';
+        }
+    </script>
+
     <h2 class="auth-title">Bienvenido de nuevo</h2>
     <p class="muted auth-sub">Ingresa tus credenciales para acceder al sistema.</p>
 

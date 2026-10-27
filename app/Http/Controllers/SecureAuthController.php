@@ -36,7 +36,7 @@ class SecureAuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('dashboard');
+        return redirect()->route('mask');
     }
 
     public function login(Request $request)
@@ -76,7 +76,7 @@ class SecureAuthController extends Controller
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->route('mask');
     }
 
     public function logout(Request $request)

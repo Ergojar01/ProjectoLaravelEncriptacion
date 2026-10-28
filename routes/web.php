@@ -17,7 +17,7 @@ Route::get('/', function () {
 })->name('login');
 
 // 2. Portal: la única URL que ve el usuario (/portal). Todo lo demás vive dentro del iframe.
-Route::get('/portal', fn () => view('mask'))->name('mask')->middleware('auth');
+Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware('auth');
 
 Route::middleware('guest')->group(function () {
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');

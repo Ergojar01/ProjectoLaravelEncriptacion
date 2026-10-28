@@ -1,5 +1,5 @@
 # docker/php/Dockerfile
-FROM php:8.3-apache
+FROM php:8.3.36-apache
 
 # Actualizar el sistema e instalar dependencias necesarias
 RUN apt-get update && apt-get install -y \

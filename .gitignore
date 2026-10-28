@@ -36,3 +36,4 @@ Homestead.yaml
 /docker/mysql/data.env
 .env
 .env
+.env.save

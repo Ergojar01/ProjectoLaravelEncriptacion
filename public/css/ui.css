@@ -231,3 +231,28 @@ body.app { display: flex; min-height: 100vh; background: var(--parch) var(--half
   body.guest::after, .sfx { animation: none; }
   .btn, .sidebar { transition: none; }
 }
+
+/* Cuenta regresiva (bloqueos y clave temporal) */
+.timer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: .7rem 1rem; background: var(--paper); border: var(--line); border-radius: 8px; box-shadow: 4px 4px 0 var(--ink); }
+.timer { transition: opacity .6s ease, transform .6s ease; }
+.timer.hide { opacity: 0; transform: translateY(-8px); }
+.timer > div:first-child { flex: 1; }
+.timer small { font-weight: 800; color: var(--muted); }
+.timer-count { font-family: var(--f-display); font-size: 2.4rem; line-height: 1; letter-spacing: .06em; color: var(--navy); }
+.timer-bar { height: 10px; margin-top: .4rem; background: var(--parch-2); border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.timer-bar i { display: block; width: 100%; height: 100%; background: var(--gold); transition: width .25s linear; }
+.timer.warn .timer-count { color: var(--red); }
+.timer.warn .timer-bar i { background: var(--red); }
+.timer.done .timer-count { color: var(--ok); }
+.timer.done .timer-bar i { background: var(--ok); }
+@media (prefers-reduced-motion: no-preference) {
+  .timer.warn .timer-count { animation: tick 1s steps(2) infinite; }
+}
+@keyframes tick { 50% { opacity: .55; } }
+.row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+
+/* Recuperar contraseña */
+.auth-alt + .auth-alt { margin-top: .5rem; }
+.recover-steps { margin: 0 0 1.1rem; padding: 0; list-style: none; counter-reset: paso; }
+.recover-steps li { position: relative; margin-bottom: .7rem; padding: .55rem .8rem .55rem 3rem; background: var(--parch); border: 2px solid var(--ink); border-radius: 8px; counter-increment: paso; font-weight: 600; }
+.recover-steps li::before { content: counter(paso); position: absolute; left: .6rem; top: 50%; display: grid; place-items: center; width: 1.8rem; height: 1.8rem; margin-top: -.9rem; font-family: var(--f-display); font-size: 1.2rem; color: var(--gold); background: var(--navy); border: 2px solid var(--ink); border-radius: 50%; }

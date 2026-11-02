@@ -23,8 +23,9 @@ class ProfileController extends Controller
      */
     public function updatePassword(Request $request): RedirectResponse
     {
-        $user = $request->user();
-        $key  = 'pwchange:' . $user->id . '|' . $request->ip();
+        $user   = $request->user();
+        $forced = (bool) $user->must_change_password;   // entró con clave temporal
+        $key    = 'pwchange:' . $user->id . '|' . $request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
@@ -34,12 +35,18 @@ class ProfileController extends Controller
             ]);
         }
 
-        $data = $request->validate([
-            'current_password' => ['required', 'string'],
-            'password'         => ['required', 'confirmed', 'different:current_password', PasswordPolicy::rule()],
-        ], PasswordPolicy::messages());
+        $rules = ['password' => ['required', 'confirmed', PasswordPolicy::rule()]];
+        if (! $forced) {
+            $rules['current_password'] = ['required', 'string'];
+            $rules['password'][]       = 'different:current_password';
+        }
+        $data = $request->validate($rules, PasswordPolicy::messages());
 
-        if (! CredentialHasher::check($user->email, $data['current_password'], $user->salt, $user->password)) {
+        if ($forced) {
+            if (CredentialHasher::check($user->email, $data['password'], $user->salt, $user->password)) {
+                return back()->withErrors(['password' => 'La nueva contraseña debe ser distinta de la temporal.']);
+            }
+        } elseif (! CredentialHasher::check($user->email, $data['current_password'], $user->salt, $user->password)) {
             RateLimiter::hit($key, 300);
 
             return back()->withErrors(['current_password' => 'La contraseña actual no es correcta.']);
@@ -48,14 +55,19 @@ class ProfileController extends Controller
         $salt = CredentialHasher::newSalt();
 
         $user->forceFill([
-            'salt'           => $salt,
-            'password'       => CredentialHasher::make($user->email, $data['password'], $salt),
-            'crypto_version' => config('crypto.version'),
+            'salt'                     => $salt,
+            'password'                 => CredentialHasher::make($user->email, $data['password'], $salt),
+            'crypto_version'           => config('crypto.version'),
+            'must_change_password'     => false,
+            'temp_password_expires_at' => null,
+            'temp_password_used_at'    => null,
         ])->save();
 
         RateLimiter::clear($key);
         $request->session()->regenerate();
 
-        return back()->with('status', 'Contraseña actualizada. Se generó una sal nueva y se volvió a sellar.');
+        return $forced
+            ? redirect()->route('dashboard')->with('status', 'Contraseña actualizada. Ya puedes usar el sistema.')
+            : back()->with('status', 'Contraseña actualizada. Se generó una sal nueva y se volvió a sellar.');
     }
 }

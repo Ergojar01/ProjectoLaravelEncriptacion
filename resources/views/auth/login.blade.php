@@ -13,6 +13,17 @@
     <p class="muted auth-sub">Ingresa tus credenciales para entrar al sistema.</p>
 
     @if($errors->any()) <div class="alert alert-error" role="alert">{{ $errors->first() }}</div> @endif
+    @if(session('error')) <div class="alert alert-error" role="alert">{{ session('error') }}</div> @endif
+
+    @if(session('lock_seconds'))
+        <div class="timer" data-countdown="{{ session('lock_seconds') }}" data-total="300" data-on-end="unlock">
+            <div>
+                <small data-countdown-label>Cuenta bloqueada · podrás intentar de nuevo en</small>
+                <div class="timer-bar"><i></i></div>
+            </div>
+            <span class="timer-count" data-countdown-text>05:00</span>
+        </div>
+    @endif
 
     <form method="POST" action="{{ route('login.store') }}" novalidate>
         @csrf
@@ -32,4 +43,5 @@
     </form>
 
     <p class="auth-alt">¿Aún no tienes cuenta? <a href="{{ route('register') }}">Súmate a la tripulación</a></p>
+    <p class="auth-alt"><a href="{{ route('password.recover') }}">¿Olvidaste tu contraseña?</a></p>
 @endsection

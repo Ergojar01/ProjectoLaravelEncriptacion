@@ -11,6 +11,7 @@
         <span>One Piece <b>Haki Encryption</b></span>
     </div>
 
+    @unless(auth()->user()->must_change_password)
     <nav class="nav" aria-label="Principal">
         <span class="nav-label">Cubierta</span>
         <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
@@ -21,12 +22,14 @@
         </a>
 
         @if(auth()->user()->role_level >= 500)
+            @php($pend = \App\Models\User::whereNotNull('temp_requested_at')->count())
             <span class="nav-label">Capitanía</span>
             <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación @if($pend) <span class=\"badge b-you\">{{ $pend }}</span> @endif
             </a>
         @endif
     </nav>
+    @endunless
 
     <div class="sidebar-foot">
         <span class="avatar">{{ auth()->user()->initials }}</span>
@@ -58,6 +61,6 @@
         @yield('content')
     </main>
 </div>
-<script src="{{ asset('js/ui.js') }}" defer></script>
+<script src="{{ asset('js/ui.js') }}?v={{ filemtime(public_path('js/ui.js')) }}" defer></script>
 </body>
 </html>

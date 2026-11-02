@@ -48,13 +48,15 @@ class SecureAuthController extends Controller
             'password' => ['required', 'string'],
         ], PasswordPolicy::messages());
 
-        $key = 'login:' . $credentials['email'] . '|' . $request->ip();
+        $key  = 'login:' . $credentials['email'];   // contador de fallos
+        $lock = 'lock:'  . $credentials['email'];   // bloqueo activo
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
-            $seconds = RateLimiter::availableIn($key);
+        if (RateLimiter::tooManyAttempts($lock, 1)) {
+            $s = RateLimiter::availableIn($lock);
 
             return back()
-                ->withErrors(['email' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos."])
+                ->withErrors(['email' => 'Cuenta bloqueada por intentos fallidos. Intenta de nuevo en ' . ceil($s / 60) . ' min (' . $s . ' s).'])
+                ->with('lock_seconds', $s)
                 ->onlyInput('email');
         }
 
@@ -67,9 +69,33 @@ class SecureAuthController extends Controller
         if (! $valid) {
             RateLimiter::hit($key, 300);
 
+            if (RateLimiter::attempts($key) >= 3) {
+                RateLimiter::hit($lock, 300);   // bloqueo de 5 min desde el 3.er fallo
+                RateLimiter::clear($key);
+
+                return back()
+                    ->withErrors(['email' => 'Fallaste 3 veces. Cuenta bloqueada durante 5 minutos.'])
+                    ->with('lock_seconds', 300)
+                    ->onlyInput('email');
+            }
+
+            $left = 3 - RateLimiter::attempts($key);
+
             return back()
-                ->withErrors(['email' => 'Credenciales incorrectas.'])
+                ->withErrors(['email' => "Credenciales incorrectas. Te quedan {$left} intento(s)."])
                 ->onlyInput('email');
+        }
+
+        // Clave temporal: sirve una sola vez y solo hasta que venza
+        if ($user->must_change_password) {
+            if ($user->temp_password_used_at
+                || ($user->temp_password_expires_at && now()->greaterThan($user->temp_password_expires_at))) {
+                return back()
+                    ->withErrors(['email' => 'La clave temporal ya fue usada o venció. Pide una nueva al administrador.'])
+                    ->onlyInput('email');
+            }
+
+            $user->forceFill(['temp_password_used_at' => now()])->save();
         }
 
         RateLimiter::clear($key);
@@ -86,5 +112,26 @@ class SecureAuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * Una persona 300 o 499 pide una clave temporal: queda marcada para el administrador.
+     * La respuesta es siempre la misma, exista o no el correo.
+     */
+    public function requestTemp(Request $request)
+    {
+        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+        ], PasswordPolicy::messages());
+
+        $user = User::where('email', $data['email'])->first();
+
+        if ($user && (int) $user->role_level < 500) {
+            $user->forceFill(['temp_requested_at' => now()])->save();
+        }
+
+        return back()->with('status', 'Si el correo pertenece a una cuenta de nivel 300 o 499, el administrador ya vio tu solicitud. Él te entregará una clave temporal.');
     }
 }

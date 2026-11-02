@@ -23,10 +23,12 @@ Route::middleware('guest')->group(function () {
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');
 
     Route::view('/registro', 'auth.register')->name('register');
+    Route::view('/recuperar-clave', 'auth.recover')->name('password.recover');
+    Route::post('/recuperar-clave', [SecureAuthController::class, 'requestTemp'])->middleware('throttle:5,10')->name('password.recover.store');
     Route::post('/registro', [SecureAuthController::class, 'register'])->name('register.store');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'force.password'])->group(function () {
     Route::post('/salir', [SecureAuthController::class, 'logout'])->name('logout');
 
     // Pantallas internas: solo se muestran dentro del portal ('framed')
@@ -44,6 +46,7 @@ Route::middleware('auth')->group(function () {
                 Route::post('/usuarios', [UserAdminController::class, 'store'])->name('users.store');
                 Route::patch('/usuarios/{user}/nivel', [UserAdminController::class, 'updateLevel'])->name('users.level');
                 Route::delete('/usuarios/{user}', [UserAdminController::class, 'destroy'])->name('users.destroy');
+                Route::post('/usuarios/{user}/clave-temporal', [UserAdminController::class, 'tempPassword'])->name('users.temp');
             });
         });
     });

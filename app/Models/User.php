@@ -32,6 +32,10 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'role_level'        => 'integer',
+            'must_change_password'     => 'boolean',
+            'temp_password_expires_at' => 'datetime',
+            'temp_password_used_at'    => 'datetime',
+            'temp_requested_at'        => 'datetime',
         ];
     }
 

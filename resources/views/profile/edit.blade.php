@@ -9,6 +9,18 @@
         </div>
     </div>
 
+    @if(auth()->user()->must_change_password)
+        @php($left = max(0, auth()->user()->temp_password_used_at->copy()->addMinutes(5)->getTimestamp() - now()->getTimestamp()))
+        <div class="alert alert-error" role="alert">Ingresaste con una clave temporal. Crea una contraseña nueva para continuar.</div>
+        <div class="timer" data-countdown="{{ $left }}" data-total="300" data-on-end="reload">
+            <div>
+                <small data-countdown-label>Tiempo para cambiar tu contraseña</small>
+                <div class="timer-bar"><i></i></div>
+            </div>
+            <span class="timer-count" data-countdown-text>05:00</span>
+        </div>
+    @endif
+
     <div class="prof-grid">
         <div class="card">
             <div class="card-head"><h3>Tu cuenta</h3></div>
@@ -31,6 +43,7 @@
                     </div>
                 @endif
 
+                @unless(auth()->user()->must_change_password)
                 <div class="field">
                     <label for="current_password">Contraseña actual</label>
                     <div class="input-wrap">
@@ -38,6 +51,7 @@
                         <button type="button" class="toggle" data-toggle-pass="current_password">Mostrar</button>
                     </div>
                 </div>
+                @endunless
 
                 <div class="field">
                     <label for="new_password">Contraseña nueva</label>

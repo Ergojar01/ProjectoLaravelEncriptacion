@@ -2,6 +2,22 @@
 @section('title', 'Usuarios')
 
 @section('content')
+    @php($pendientes = $users->whereNotNull('temp_requested_at'))
+    @if($pendientes->isNotEmpty())
+        <div class="alert alert-error" role="alert">
+            {{ $pendientes->count() }} solicitud(es) de clave temporal pendiente(s):
+            <b>{{ $pendientes->pluck('name')->join(', ') }}</b>. Usa «Clave temporal» en su fila.
+        </div>
+    @endif
+
+    @if(session('temp_password'))
+        <div class="alert alert-ok" role="status">
+            Clave temporal (se muestra una sola vez, cópiala ahora):
+            <strong class="mono">{{ session('temp_password') }}</strong><br>
+            Vence en 24 horas y sirve para un solo ingreso: la persona irá directo a cambiar su contraseña, con 5 minutos para hacerlo.
+        </div>
+    @endif
+
     <div class="page-head">
         <div>
             <h1>Gestión de usuarios</h1>
@@ -36,6 +52,9 @@
                                     <strong>{{ $u->name }}</strong>
                                     @if($u->id === auth()->id()) <span class="badge b-you">Tú</span> @endif
                                     <div class="muted small">{{ $u->email }}</div>
+                                    @if($u->temp_requested_at)
+                                        <div><span class="badge b-warn">Solicitó clave temporal · {{ $u->temp_requested_at->locale('es')->diffForHumans() }}</span></div>
+                                    @endif
                                 </div>
                             </div>
                         </td>
@@ -65,10 +84,18 @@
                         @if($canManage)
                             <td class="right">
                                 @if($u->id !== auth()->id())
-                                    <form method="POST" action="{{ route('admin.users.destroy', $u) }}" data-confirm="¿Eliminar a {{ $u->name }}? Esta acción no se puede deshacer.">
-                                        @csrf @method('DELETE')
-                                        <button class="btn btn-danger btn-sm">Eliminar</button>
-                                    </form>
+                                    <div class="row-actions">
+                                        @if($u->role_level < 500)
+                                            <form method="POST" action="{{ route('admin.users.temp', $u) }}" data-confirm="¿Generar clave temporal para {{ $u->name }}? Su clave actual dejará de funcionar y se cerrará su sesión.">
+                                                @csrf
+                                                <button class="btn {{ $u->temp_requested_at ? 'btn-primary' : 'btn-ghost' }} btn-sm">Clave temporal</button>
+                                            </form>
+                                        @endif
+                                        <form method="POST" action="{{ route('admin.users.destroy', $u) }}" data-confirm="¿Eliminar a {{ $u->name }}? Esta acción no se puede deshacer.">
+                                            @csrf @method('DELETE')
+                                            <button class="btn btn-danger btn-sm">Eliminar</button>
+                                        </form>
+                                    </div>
                                 @else
                                     <span class="muted small">Cuenta actual</span>
                                 @endif

@@ -15,13 +15,13 @@
     @if($errors->any()) <div class="alert alert-error" role="alert">{{ $errors->first() }}</div> @endif
     @if(session('error')) <div class="alert alert-error" role="alert">{{ session('error') }}</div> @endif
 
-    @if(session('lock_seconds'))
-        <div class="timer" data-countdown="{{ session('lock_seconds') }}" data-total="300" data-on-end="unlock">
+    @if($lockSeconds = session('lock_seconds'))
+        <div class="timer" data-countdown="{{ $lockSeconds }}" data-on-end="unlock">
             <div>
                 <small data-countdown-label>Cuenta bloqueada · podrás intentar de nuevo en</small>
                 <div class="timer-bar"><i></i></div>
             </div>
-            <span class="timer-count" data-countdown-text>05:00</span>
+            <span class="timer-count" data-countdown-text>{{ sprintf('%02d:%02d', intdiv($lockSeconds, 60), $lockSeconds % 60) }}</span>
         </div>
     @endif
 

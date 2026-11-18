@@ -38,6 +38,34 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_login_is_blocked_for_three_minutes_after_three_failures(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->withPassword(self::PASSWORD)->create();
+        $invalid = ['email' => $user->email, 'password' => 'contraseña-incorrecta'];
+        $valid = ['email' => $user->email, 'password' => self::PASSWORD];
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            $this->post(route('login.store'), $invalid)
+                ->assertSessionHasErrors('email')
+                ->assertSessionMissing('lock_seconds');
+        }
+
+        $this->post(route('login.store'), $invalid)
+            ->assertSessionHasErrors('email')
+            ->assertSessionHas('lock_seconds', 180);
+
+        $this->get(route('login'))->assertSee('03:00');
+
+        $this->travel(179)->seconds();
+        $this->post(route('login.store'), $valid)->assertSessionHas('lock_seconds', 1);
+        $this->assertGuest();
+
+        $this->travel(1)->second();
+        $this->post(route('login.store'), $valid)->assertRedirect(route('mask'));
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_successful_legacy_login_upgrades_the_hash(): void
     {
         $pepper = str_repeat('a', 64);

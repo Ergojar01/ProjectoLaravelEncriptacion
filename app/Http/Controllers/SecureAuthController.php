@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 
 class SecureAuthController extends Controller
 {
+    private const LOGIN_LOCK_SECONDS = 180;
+
     public function register(Request $request)
     {
         if (is_string($email = $request->input('email'))) {
@@ -80,12 +82,12 @@ class SecureAuthController extends Controller
             RateLimiter::hit($key, 300);
 
             if (RateLimiter::attempts($key) >= 3) {
-                RateLimiter::hit($lock, 300);   // bloqueo de 5 min desde el 3.er fallo
+                RateLimiter::hit($lock, self::LOGIN_LOCK_SECONDS);
                 RateLimiter::clear($key);
 
                 return back()
-                    ->withErrors(['email' => 'Fallaste 3 veces. Cuenta bloqueada durante 5 minutos.'])
-                    ->with('lock_seconds', 300)
+                    ->withErrors(['email' => 'Fallaste 3 veces. Cuenta bloqueada durante 3 minutos.'])
+                    ->with('lock_seconds', self::LOGIN_LOCK_SECONDS)
                     ->onlyInput('email');
             }
 

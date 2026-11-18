@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Rules\RejectUnsafePassword;
 use Closure;
 
 final class PasswordPolicy
@@ -31,6 +32,7 @@ final class PasswordPolicy
                     }
                 }
             },
+            new RejectUnsafePassword,
         ];
     }
 

@@ -7,6 +7,8 @@ use App\Support\PasswordPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -16,58 +18,74 @@ class ProfileController extends Controller
         return view('profile.edit', ['user' => $request->user()]);
     }
 
-    /**
-     * Cambia la contraseña respetando el esquema criptográfico propio:
-     * sal nueva de 256 bits + PBKDF2-SHA512 + XOR + sello HMAC.
-     * No usa Hash::make (bcrypt) para no romper el login.
-     */
     public function updatePassword(Request $request): RedirectResponse
     {
-        $user   = $request->user();
-        $forced = (bool) $user->must_change_password;   // entró con clave temporal
-        $key    = 'pwchange:' . $user->id . '|' . $request->ip();
+        $user = $request->user();
+        $forced = $user->must_change_password;
+        $key = 'pwchange:'.$user->id.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
 
-            return back()->withErrors([
+            throw ValidationException::withMessages([
                 'current_password' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos.",
             ]);
         }
 
-        $rules = ['password' => ['required', 'confirmed', PasswordPolicy::rule()]];
-        if (! $forced) {
-            $rules['current_password'] = ['required', 'string'];
-            $rules['password'][]       = 'different:current_password';
-        }
-        $data = $request->validate($rules, PasswordPolicy::messages());
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => PasswordPolicy::rules(),
+        ], PasswordPolicy::messages());
 
-        if ($forced) {
-            if (CredentialHasher::check($user->email, $data['password'], $user->salt, $user->password)) {
-                return back()->withErrors(['password' => 'La nueva contraseña debe ser distinta de la temporal.']);
-            }
-        } elseif (! CredentialHasher::check($user->email, $data['current_password'], $user->salt, $user->password)) {
+        $valid = $forced
+            ? CredentialHasher::checkTemporary($user, $data['current_password'])
+            : CredentialHasher::check($user, $data['current_password']);
+
+        if (! $valid) {
             RateLimiter::hit($key, 300);
 
-            return back()->withErrors(['current_password' => 'La contraseña actual no es correcta.']);
+            throw ValidationException::withMessages(['current_password' => 'La contraseña actual no es correcta.']);
         }
 
-        $salt = CredentialHasher::newSalt();
+        if (hash_equals($data['current_password'], $data['password'])) {
+            $message = $forced
+                ? 'La nueva contraseña debe ser distinta de la clave temporal.'
+                : 'La nueva contraseña debe ser distinta de la actual.';
 
-        $user->forceFill([
-            'salt'                     => $salt,
-            'password'                 => CredentialHasher::make($user->email, $data['password'], $salt),
-            'crypto_version'           => config('crypto.version'),
-            'must_change_password'     => false,
+            throw ValidationException::withMessages(['password' => $message]);
+        }
+
+        if ($forced && $user->temp_password_hash !== null && CredentialHasher::check($user, $data['password'])) {
+            throw ValidationException::withMessages(['password' => 'La nueva contraseña debe ser distinta de la anterior a la recuperación.']);
+        }
+
+        $attributes = [
+            ...CredentialHasher::attributes($data['password']),
+            'remember_token' => Str::random(60),
+            'must_change_password' => false,
+            'temp_password_hash' => null,
             'temp_password_expires_at' => null,
-            'temp_password_used_at'    => null,
-        ])->save();
+            'temp_password_used_at' => null,
+            'temp_requested_at' => null,
+        ];
 
+        $query = $user->credentialQuery();
+        if ($forced) {
+            $query->where('temp_password_used_at', '>', now()->subMinutes(5));
+        }
+
+        if (! $query->update($attributes)) {
+            throw ValidationException::withMessages(['current_password' => 'La credencial cambió o venció. Vuelve a iniciar sesión.']);
+        }
+
+        $user->forceFill($attributes);
+        $user->revokeDatabaseSessions();
         RateLimiter::clear($key);
-        $request->session()->regenerate();
+        $request->session()->forget(['temporary_password_proof', 'auth.password_confirmed_at']);
+        $request->session()->regenerate(true);
 
         return $forced
             ? redirect()->route('dashboard')->with('status', 'Contraseña actualizada. Ya puedes usar el sistema.')
-            : back()->with('status', 'Contraseña actualizada. Se generó una sal nueva y se volvió a sellar.');
+            : back()->with('status', 'Contraseña actualizada.');
     }
 }

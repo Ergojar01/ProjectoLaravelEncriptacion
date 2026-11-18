@@ -4,41 +4,35 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class PasswordConfirmationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_confirm_password_screen_can_be_rendered(): void
+    public function test_admin_creation_requires_the_same_policy_and_confirmation_as_registration(): void
     {
-        $user = User::factory()->create();
+        $admin = User::factory()->create(['role_level' => 500]);
+        $this->actingAs($admin);
+        $route = route('admin.users.store');
+        $fields = [
+            'name' => 'Persona nueva',
+            'email' => 'nueva@example.test',
+            'role_level' => 499,
+        ];
 
-        $response = $this->actingAs($user)->get('/confirm-password');
+        $this->post($route, $fields + ['password' => 'weak', 'password_confirmation' => 'weak'])
+            ->assertSessionHasErrors('password');
+        $this->post($route, $fields + ['password' => 'Aa1?bbbbbbbb'])
+            ->assertSessionHasErrors(['password' => 'La confirmación debe coincidir con la contraseña.']);
 
-        $response->assertStatus(200);
-    }
+        $this->assertDatabaseCount('users', 1);
+        $this->post($route, $fields + ['password' => 'Aa1?bbbbbbbb', 'password_confirmation' => 'Aa1?bbbbbbbb'])
+            ->assertSessionHasNoErrors()->assertRedirect(route('admin.users.index'));
 
-    public function test_password_can_be_confirmed(): void
-    {
-        $user = User::factory()->create();
-
-        $response = $this->actingAs($user)->post('/confirm-password', [
-            'password' => 'password',
-        ]);
-
-        $response->assertRedirect();
-        $response->assertSessionHasNoErrors();
-    }
-
-    public function test_password_is_not_confirmed_with_invalid_password(): void
-    {
-        $user = User::factory()->create();
-
-        $response = $this->actingAs($user)->post('/confirm-password', [
-            'password' => 'wrong-password',
-        ]);
-
-        $response->assertSessionHasErrors();
+        $user = User::where('email', $fields['email'])->sole();
+        $this->assertSame(499, $user->role_level);
+        $this->assertTrue(Hash::check('Aa1?bbbbbbbb', $user->password));
     }
 }

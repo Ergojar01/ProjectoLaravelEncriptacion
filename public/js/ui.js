@@ -10,11 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Checklist en vivo de la política de contraseña
   const rules = {
-    len: v => v.length >= 9,
+    len: v => {
+      const length = Array.from(v).length;
+      return length >= 12 && length <= 64;
+    },
     up:  v => /[A-Z]/.test(v),
     low: v => /[a-z]/.test(v),
     num: v => /\d/.test(v),
-    sym: v => /[^A-Za-z0-9]/.test(v),
+    sym: v => /[@$!%*?&#]/.test(v),
   };
   document.querySelectorAll('[data-pass-rules]').forEach(list => {
     const input = document.getElementById(list.dataset.passRules);

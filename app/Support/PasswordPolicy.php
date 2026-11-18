@@ -2,31 +2,57 @@
 
 namespace App\Support;
 
-use Illuminate\Validation\Rules\Password;
+use Closure;
 
 final class PasswordPolicy
 {
-    public static function rule(): Password
+    public static function rules(): array
     {
-        return Password::min(9)->mixedCase()->numbers()->symbols();
+        return [
+            'bail',
+            'required',
+            'string',
+            'min:12',
+            'max:64',
+            'confirmed',
+            static function (string $attribute, mixed $value, Closure $fail): void {
+                if (! is_string($value)) {
+                    return;
+                }
+
+                foreach ([
+                    '/[A-Z]/' => 'La contraseña debe incluir al menos una mayúscula (A-Z).',
+                    '/[a-z]/' => 'La contraseña debe incluir al menos una minúscula (a-z).',
+                    '/[0-9]/' => 'La contraseña debe incluir al menos un número (0-9).',
+                    '/[@$!%*?&#]/' => 'La contraseña debe incluir al menos un carácter especial de este conjunto: @$!%*?&#.',
+                ] as $pattern => $message) {
+                    if (! preg_match($pattern, $value)) {
+                        $fail($message);
+                    }
+                }
+            },
+        ];
     }
 
     public static function messages(): array
     {
         return [
-            'name.required'      => 'El nombre es obligatorio.',
-            'email.required'     => 'El correo es obligatorio.',
-            'email.email'        => 'Ingresa un correo válido.',
-            'email.unique'       => 'Ese correo ya está registrado.',
+            'name.required' => 'El nombre es obligatorio.',
+            'name.string' => 'El nombre debe ser texto.',
+            'name.max' => 'El nombre no puede superar los :max caracteres.',
+            'email.required' => 'El correo es obligatorio.',
+            'email.email' => 'Ingresa un correo válido.',
+            'email.max' => 'El correo no puede superar los :max caracteres.',
+            'email.unique' => 'Ese correo ya está registrado.',
             'current_password.required' => 'Escribe tu contraseña actual.',
-            'password.required'  => 'La contraseña es obligatoria.',
-            'password.different' => 'La nueva contraseña debe ser distinta de la actual.',
-            'password.confirmed' => 'Las contraseñas no coinciden.',
-            'password.min'       => 'La contraseña debe tener al menos 9 caracteres.',
-            'password.mixed'     => 'Debe incluir mayúsculas y minúsculas.',
-            'password.numbers'   => 'Debe incluir al menos un número.',
-            'password.symbols'   => 'Debe incluir al menos un símbolo.',
-            'role_level.in'      => 'Nivel de acceso no válido.',
+            'current_password.string' => 'La contraseña actual debe ser texto.',
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.string' => 'La contraseña debe ser texto.',
+            'password.confirmed' => 'La confirmación debe coincidir con la contraseña.',
+            'password.min' => 'La contraseña debe tener al menos :min caracteres.',
+            'password.max' => 'La contraseña no puede superar los :max caracteres.',
+            'role_level.required' => 'Selecciona un nivel de acceso.',
+            'role_level.in' => 'Nivel de acceso no válido.',
         ];
     }
 }

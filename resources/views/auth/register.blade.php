@@ -28,13 +28,7 @@
                 <button type="button" class="toggle" data-toggle-pass="password">Mostrar</button>
             </div>
         </div>
-        <ul class="rules" data-pass-rules="password">
-            <li data-rule="len">Mínimo 9 caracteres</li>
-            <li data-rule="up">Una mayúscula</li>
-            <li data-rule="low">Una minúscula</li>
-            <li data-rule="num">Un número</li>
-            <li data-rule="sym">Un símbolo</li>
-        </ul>
+        @include('components.password-rules', ['input' => 'password'])
         <div class="field">
             <label for="password_confirmation">Confirmar contraseña</label>
             <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>

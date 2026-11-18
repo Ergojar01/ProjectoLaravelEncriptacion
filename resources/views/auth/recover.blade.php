@@ -11,7 +11,7 @@
     <ol class="recover-steps">
         <li>Escribe tu correo y solicita la clave: el administrador verá tu solicitud en su panel (cuentas de nivel 300 y 499).</li>
         <li>El administrador te entrega una <b>clave temporal</b>. Sirve una sola vez y vence en 24 horas.</li>
-        <li>Inicia sesión con esa clave: irás directo a la pantalla para crear tu contraseña nueva, no al panel.</li>
+        <li>Inicia sesión con esa clave: irás directo a la pantalla de cambio. Escribe la clave temporal como contraseña actual y confirma la nueva.</li>
         <li>Tendrás <b>5 minutos</b> para cambiarla, con un contador a la vista. Si se acaba el tiempo, se cierra tu sesión y tu cuenta queda bloqueada 5 minutos. El administrador deberá darte una clave nueva.</li>
     </ol>
 
@@ -24,7 +24,7 @@
         <button class="btn btn-primary btn-block">Solicitar clave temporal</button>
     </form>
 
-    <p class="muted small" style="margin-top:1rem">Si eres administrador (nivel 500), otro administrador o el responsable del sistema debe restablecer tu contraseña desde la consola.</p>
+    <p class="muted small" style="margin-top:1rem">Si eres administrador (nivel 500), contacta al responsable del sistema por el canal de soporte.</p>
 
     <p class="auth-alt"><a href="{{ route('login') }}">← Volver a iniciar sesión</a></p>
 @endsection

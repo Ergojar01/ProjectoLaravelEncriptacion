@@ -17,7 +17,7 @@ Route::get('/', function () {
 })->name('login');
 
 // 2. Portal: la única URL que ve el usuario (/portal). Todo lo demás vive dentro del iframe.
-Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware('auth');
+Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware(['auth', 'auth.session']);
 
 Route::middleware('guest')->group(function () {
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');
@@ -28,7 +28,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/registro', [SecureAuthController::class, 'register'])->name('register.store');
 });
 
-Route::middleware(['auth', 'force.password'])->group(function () {
+Route::middleware(['auth', 'auth.session', 'force.password'])->group(function () {
     Route::post('/salir', [SecureAuthController::class, 'logout'])->name('logout');
 
     // Pantallas internas: solo se muestran dentro del portal ('framed')

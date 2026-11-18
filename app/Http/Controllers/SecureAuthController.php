@@ -7,6 +7,7 @@ use App\Services\CredentialHasher;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
@@ -14,34 +15,34 @@ class SecureAuthController extends Controller
 {
     public function register(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $data = $request->validate([
             'name'     => ['required', 'string', 'max:255'],
             'email'    => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'confirmed', PasswordPolicy::rule()],
+            'password' => PasswordPolicy::rules(),
         ], PasswordPolicy::messages());
-
-        $salt = CredentialHasher::newSalt();
 
         $user = User::create([
             'name'           => $data['name'],
             'email'          => $data['email'],
-            'salt'           => $salt,
-            'password'       => CredentialHasher::make($data['email'], $data['password'], $salt),
-            'crypto_version' => config('crypto.version'),
+            ...CredentialHasher::attributes($data['password']),
             'role_level'     => 300,
         ]);
 
         Auth::login($user);
-        $request->session()->regenerate();
+        $this->startSession($request, $user);
 
         return redirect()->route('mask');
     }
 
     public function login(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $credentials = $request->validate([
             'email'    => ['required', 'email'],
@@ -62,9 +63,18 @@ class SecureAuthController extends Controller
 
         $user = User::where('email', $credentials['email'])->first();
 
-        $valid = $user
-            ? CredentialHasher::check($credentials['email'], $credentials['password'], $user->salt, $user->password)
-            : CredentialHasher::burn($credentials['email'], $credentials['password']);
+        $password = $credentials['password'];
+        $temporary = $user?->must_change_password;
+
+        if ($user) {
+            $valid = $temporary
+                ? CredentialHasher::checkTemporary($user, $password)
+                : CredentialHasher::check($user, $password);
+        } else {
+            // Approximate the work of checking a credential for an existing account.
+            Hash::make($password);
+            $valid = false;
+        }
 
         if (! $valid) {
             RateLimiter::hit($key, 300);
@@ -86,23 +96,45 @@ class SecureAuthController extends Controller
                 ->onlyInput('email');
         }
 
-        // Clave temporal: sirve una sola vez y solo hasta que venza
-        if ($user->must_change_password) {
-            if ($user->temp_password_used_at
-                || ($user->temp_password_expires_at && now()->greaterThan($user->temp_password_expires_at))) {
+        if ($temporary) {
+            $claimed = $user->credentialQuery()
+                ->whereNull('temp_password_used_at')
+                ->where('temp_password_expires_at', '>', now())
+                ->update(['temp_password_used_at' => now()]);
+
+            if (! $claimed) {
                 return back()
                     ->withErrors(['email' => 'La clave temporal ya fue usada o venció. Pide una nueva al administrador.'])
                     ->onlyInput('email');
             }
+        } elseif ($user->crypto_version === 1 || Hash::needsRehash($user->password)) {
+            $attributes = CredentialHasher::attributes($password);
 
-            $user->forceFill(['temp_password_used_at' => now()])->save();
+            if (! $user->credentialQuery()->update($attributes)) {
+                return back()->withErrors(['email' => 'La credencial cambió. Vuelve a iniciar sesión.'])->onlyInput('email');
+            }
+
+            $user->forceFill($attributes);
         }
 
         RateLimiter::clear($key);
-        Auth::login($user, $request->boolean('remember'));
-        $request->session()->regenerate();
+        Auth::login($user, ! $temporary && $request->boolean('remember'));
+        $this->startSession($request, $user);
+
+        if ($temporary) {
+            $request->session()->put('temporary_password_proof', CredentialHasher::temporarySessionProof($user));
+        }
 
         return redirect()->route('mask');
+    }
+
+    private function startSession(Request $request, User $user): void
+    {
+        $request->session()->regenerate();
+        $request->session()->put(
+            'password_hash_'.Auth::getDefaultDriver(),
+            Auth::guard()->hashPasswordForCookie($user->password),
+        );
     }
 
     public function logout(Request $request)
@@ -120,7 +152,9 @@ class SecureAuthController extends Controller
      */
     public function requestTemp(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],

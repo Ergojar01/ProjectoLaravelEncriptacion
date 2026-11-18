@@ -10,14 +10,6 @@
         </div>
     @endif
 
-    @if(session('temp_password'))
-        <div class="alert alert-ok" role="status">
-            Clave temporal (se muestra una sola vez, cópiala ahora):
-            <strong class="mono">{{ session('temp_password') }}</strong><br>
-            Vence en 24 horas y sirve para un solo ingreso: la persona irá directo a cambiar su contraseña, con 5 minutos para hacerlo.
-        </div>
-    @endif
-
     <div class="page-head">
         <div>
             <h1>Gestión de usuarios</h1>
@@ -37,7 +29,7 @@
             <table class="table">
                 <thead>
                 <tr>
-                    <th>ID</th><th>Usuario</th><th>Nivel / Rol</th><th>Hash de credencial</th><th>Clave</th>
+                    <th>ID</th><th>Usuario</th><th>Nivel / Rol</th><th>Clave</th>
                     @if($canManage)<th class="right">Acciones</th>@endif
                 </tr>
                 </thead>
@@ -73,7 +65,6 @@
                                 <span class="badge {{ $u->role_class }}">{{ $u->role_level }} · {{ $u->role_name }}</span>
                             @endif
                         </td>
-                        <td class="mono hash" title="Hash protegido">{{ Str::limit($u->password, 24, '…') }}</td>
                         <td>
                             @if($u->crypto_version >= $currentVersion)
                                 <span class="badge b-ok">Actualizada</span>
@@ -86,10 +77,7 @@
                                 @if($u->id !== auth()->id())
                                     <div class="row-actions">
                                         @if($u->role_level < 500)
-                                            <form method="POST" action="{{ route('admin.users.temp', $u) }}" data-confirm="¿Generar clave temporal para {{ $u->name }}? Su clave actual dejará de funcionar y se cerrará su sesión.">
-                                                @csrf
-                                                <button class="btn {{ $u->temp_requested_at ? 'btn-primary' : 'btn-ghost' }} btn-sm">Clave temporal</button>
-                                            </form>
+                                            <button data-open="modal-temp-{{ $u->id }}" type="button" class="btn {{ $u->temp_requested_at ? 'btn-primary' : 'btn-ghost' }} btn-sm">Clave temporal</button>
                                         @endif
                                         <form method="POST" action="{{ route('admin.users.destroy', $u) }}" data-confirm="¿Eliminar a {{ $u->name }}? Esta acción no se puede deshacer.">
                                             @csrf @method('DELETE')
@@ -140,13 +128,7 @@
                                 <button type="button" class="toggle" data-toggle-pass="n_pass">Mostrar</button>
                             </div>
                         </div>
-                        <ul class="rules" data-pass-rules="n_pass">
-                            <li data-rule="len">Mínimo 9 caracteres</li>
-                            <li data-rule="up">Una mayúscula</li>
-                            <li data-rule="low">Una minúscula</li>
-                            <li data-rule="num">Un número</li>
-                            <li data-rule="sym">Un símbolo</li>
-                        </ul>
+                        @include('components.password-rules', ['input' => 'n_pass'])
                         <div class="field">
                             <label for="n_conf">Confirmar contraseña</label>
                             <input id="n_conf" name="password_confirmation" type="password" autocomplete="new-password" required>
@@ -164,5 +146,41 @@
                 </div>
             </div>
         </div>
+        @foreach($users->where('role_level', '<', 500) as $u)
+            <div class="modal {{ $errors->any() && old('form') === 'temp-'.$u->id ? 'open' : '' }}" id="modal-temp-{{ $u->id }}">
+                <div class="modal-box">
+                    <div class="modal-head">
+                        <h3>Clave temporal para {{ $u->name }}</h3>
+                        <button class="x" data-close type="button" aria-label="Cerrar">×</button>
+                    </div>
+                    <div class="modal-body">
+                        @if($errors->any() && old('form') === 'temp-'.$u->id)
+                            <div class="alert alert-error" role="alert">
+                                @foreach($errors->all() as $error) <div>{{ $error }}</div> @endforeach
+                            </div>
+                        @endif
+                        <form method="POST" action="{{ route('admin.users.temp', $u) }}" novalidate>
+                            @csrf
+                            <input type="hidden" name="form" value="temp-{{ $u->id }}">
+                            <div class="field">
+                                <label for="temp-current-{{ $u->id }}">Tu contraseña actual de administrador</label>
+                                <input id="temp-current-{{ $u->id }}" name="current_password" type="password" autocomplete="current-password" required>
+                            </div>
+                            <div class="field">
+                                <label for="temp-password-{{ $u->id }}">Nueva clave temporal</label>
+                                <input id="temp-password-{{ $u->id }}" name="password" type="password" autocomplete="new-password" required>
+                            </div>
+                            @include('components.password-rules', ['input' => 'temp-password-'.$u->id])
+                            <div class="field">
+                                <label for="temp-confirm-{{ $u->id }}">Confirmar clave temporal</label>
+                                <input id="temp-confirm-{{ $u->id }}" name="password_confirmation" type="password" autocomplete="new-password" required>
+                            </div>
+                            <p class="muted small">Vence en 24 horas y permite un solo ingreso. Entrégala a la persona por un canal seguro.</p>
+                            <button class="btn btn-primary btn-block">Asignar clave temporal</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endforeach
     @endif
 @endsection

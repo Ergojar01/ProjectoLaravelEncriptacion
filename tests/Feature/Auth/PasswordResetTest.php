@@ -3,71 +3,172 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_reset_password_link_screen_can_be_rendered(): void
-    {
-        $response = $this->get('/forgot-password');
+    private const ADMIN = 'AdminCurrent#123';
 
-        $response->assertStatus(200);
+    private const CURRENT = 'Current#Pass123';
+
+    private const TEMPORARY = 'Temporary#123';
+
+    private const NEW = 'NewPassword#123';
+
+    public function test_recovery_request_is_generic_and_marks_supported_accounts(): void
+    {
+        $user = User::factory()->create();
+        $this->get(route('password.recover'))->assertOk();
+
+        $this->post(route('password.recover.store'), ['email' => $user->email])
+            ->assertSessionHasNoErrors();
+        $status = session('status');
+
+        $this->post(route('password.recover.store'), ['email' => 'missing@example.test'])
+            ->assertSessionHas('status', $status);
+
+        $this->assertNotNull($user->refresh()->temp_requested_at);
     }
 
-    public function test_reset_password_link_can_be_requested(): void
+    public function test_recovery_requires_admin_reauthentication_and_confirmed_temporary_password(): void
     {
-        Notification::fake();
+        $admin = User::factory()->withPassword(self::ADMIN)->create(['role_level' => 500]);
+        $user = User::factory()->withPassword(self::CURRENT)->create();
+        $this->actingAs($admin)->get(route('admin.users.index'))->assertOk()
+            ->assertDontSee(substr($user->password, 0, 24))
+            ->assertSee('Nueva clave temporal');
 
-        $user = User::factory()->create();
+        $route = route('admin.users.temp', $user);
+        $this->post($route, $this->issuance('incorrecta'))->assertSessionHasErrors('current_password');
+        $this->post($route, array_replace($this->issuance(), ['password_confirmation' => 'incorrecta']))
+            ->assertSessionHasErrors('password');
+        $this->post($route, array_replace($this->issuance(), [
+            'password' => self::CURRENT, 'password_confirmation' => self::CURRENT,
+        ]))->assertSessionHasErrors('password');
 
-        $this->post('/forgot-password', ['email' => $user->email]);
-
-        Notification::assertSentTo($user, ResetPassword::class);
+        $this->assertNull($user->refresh()->temp_password_hash);
     }
 
-    public function test_reset_password_screen_can_be_rendered(): void
+    public function test_non_administrators_cannot_issue_temporary_credentials(): void
     {
-        Notification::fake();
-
+        $viewer = User::factory()->withPassword(self::ADMIN)->create(['role_level' => 499]);
         $user = User::factory()->create();
 
-        $this->post('/forgot-password', ['email' => $user->email]);
+        $this->actingAs($viewer)->post(route('admin.users.temp', $user), $this->issuance())
+            ->assertForbidden();
 
-        Notification::assertSentTo($user, ResetPassword::class, function ($notification) {
-            $response = $this->get('/reset-password/'.$notification->token);
-
-            $response->assertStatus(200);
-
-            return true;
-        });
+        $this->assertNull($user->refresh()->temp_password_hash);
     }
 
-    public function test_password_can_be_reset_with_valid_token(): void
+    public function test_temporary_credential_is_single_use_and_final_change_checks_current_and_previous_passwords(): void
     {
-        Notification::fake();
+        $admin = User::factory()->withPassword(self::ADMIN)->create(['role_level' => 500]);
+        $user = User::factory()->withPassword(self::CURRENT)->create();
+        $original = $user->password;
 
+        $this->actingAs($admin)->post(route('admin.users.temp', $user), $this->issuance())
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('temp_password');
+
+        $user->refresh();
+        $this->assertSame($original, $user->password);
+        $this->assertTrue(Hash::check(self::TEMPORARY, $user->temp_password_hash));
+        $this->assertArrayNotHasKey('temp_password_hash', $user->toArray());
+
+        Auth::forgetGuards();
+        $this->flushSession();
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::CURRENT])
+            ->assertSessionHasErrors('email');
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::TEMPORARY, 'remember' => true])
+            ->assertRedirect(route('mask'))
+            ->assertCookieMissing(Auth::guard()->getRecallerName());
+
+        $session = session()->all();
+        Auth::forgetGuards();
+        $this->flushSession();
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::TEMPORARY])
+            ->assertSessionHasErrors('email');
+
+        $this->flushSession();
+        $this->withSession($session)->get(route('dashboard'))->assertRedirect(route('profile.edit'));
+        $this->get(route('profile.edit'))->assertOk()->assertSee('Clave temporal actual');
+        $this->put(route('profile.password'), [
+            'password' => self::NEW, 'password_confirmation' => self::NEW,
+        ])->assertSessionHasErrors('current_password');
+
+        $this->putJson(route('profile.password'), array_replace($this->change(self::NEW), [
+            'current_password' => 'incorrecta',
+        ]))->assertUnprocessable()
+            ->assertJsonPath('errors.current_password.0', 'La contraseña actual no es correcta.');
+
+        foreach ([self::TEMPORARY, self::CURRENT] as $used) {
+            $this->put(route('profile.password'), $this->change($used))->assertSessionHasErrors('password');
+        }
+
+        $this->put(route('profile.password'), $this->change(self::NEW))
+            ->assertRedirect(route('dashboard'))->assertSessionHasNoErrors();
+
+        $user->refresh();
+        $this->assertFalse($user->must_change_password);
+        $this->assertNull($user->temp_password_hash);
+        $this->assertTrue(Hash::check(self::NEW, $user->password));
+    }
+
+    public function test_expired_temporary_credential_cannot_be_used(): void
+    {
         $user = User::factory()->create();
+        $user->forceFill([
+            'must_change_password' => true,
+            'temp_password_hash' => Hash::make(self::TEMPORARY),
+            'temp_password_expires_at' => now()->subMinute(),
+        ])->save();
 
-        $this->post('/forgot-password', ['email' => $user->email]);
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::TEMPORARY])
+            ->assertSessionHasErrors('email');
 
-        Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
-            $response = $this->post('/reset-password', [
-                'token' => $notification->token,
-                'email' => $user->email,
-                'password' => 'password',
-                'password_confirmation' => 'password',
-            ]);
+        $this->assertGuest();
+        $this->assertNull($user->refresh()->temp_password_used_at);
+    }
 
-            $response
-                ->assertSessionHasNoErrors()
-                ->assertRedirect(route('login'));
+    public function test_temporary_session_expires_before_password_write(): void
+    {
+        $user = User::factory()->create();
+        $original = $user->password;
+        $user->forceFill([
+            'must_change_password' => true,
+            'temp_password_hash' => Hash::make(self::TEMPORARY),
+            'temp_password_expires_at' => now()->addHours(24),
+        ])->save();
 
-            return true;
-        });
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::TEMPORARY])
+            ->assertRedirect(route('mask'));
+
+        $this->travel(6)->minutes();
+        $this->put(route('profile.password'), $this->change(self::NEW));
+        $this->assertGuest();
+        $this->assertSame($original, $user->refresh()->password);
+    }
+
+    private function issuance(string $current = self::ADMIN): array
+    {
+        return [
+            'current_password' => $current,
+            'password' => self::TEMPORARY,
+            'password_confirmation' => self::TEMPORARY,
+        ];
+    }
+
+    private function change(string $password): array
+    {
+        return [
+            'current_password' => self::TEMPORARY,
+            'password' => $password,
+            'password_confirmation' => $password,
+        ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\CredentialHasher;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +21,15 @@ class ForcePasswordChange
 
         if (! $user || ! $user->must_change_password) {
             return $next($request);
+        }
+
+        $proof = $request->session()->get('temporary_password_proof');
+        if (! is_string($proof) || ! hash_equals(CredentialHasher::temporarySessionProof($user), $proof)) {
+            Auth::guard()->logoutCurrentDevice();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('login');
         }
 
         $deadline = $user->temp_password_used_at?->copy()->addMinutes(5);

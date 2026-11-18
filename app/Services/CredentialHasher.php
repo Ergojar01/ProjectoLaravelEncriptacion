@@ -2,89 +2,66 @@
 
 namespace App\Services;
 
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 use RuntimeException;
 
 final class CredentialHasher
 {
-    /** Sal aleatoria de 256 bits (64 caracteres hex). */
-    public static function newSalt(): string
+    public static function attributes(#[\SensitiveParameter] string $password): array
     {
-        return bin2hex(random_bytes(32));
-    }
-
-    /** Hash final (128 caracteres hex) que se guarda en la columna password. */
-    public static function make(string $username, string $password, string $salt): string
-    {
-        return self::stages($username, $password, $salt)['final'];
-    }
-
-    public static function check(string $username, string $password, string $salt, string $stored): bool
-    {
-        return hash_equals($stored, self::make($username, $password, $salt));
-    }
-
-    /** Gasta el mismo tiempo cuando el usuario no existe (evita enumeración). */
-    public static function burn(string $username, string $password): bool
-    {
-        self::stages($username, $password, str_repeat('00', 32));
-
-        return false;
-    }
-
-    /** Todas las etapas del proceso (para la demostración). */
-    public static function stages(string $username, string $password, string $salt): array
-    {
-        $pepper  = self::pepper();
-        $saltBin = hex2bin($salt);
-        $user    = mb_strtolower(trim($username));
-
-        // 1. SHA-512 del usuario (HMAC, clave = pimienta + sal)
-        $userHash = hash_hmac('sha512', $user, $pepper . $saltBin, true);
-
-        // 2. SHA-512 de la contraseña (PBKDF2, sal + pimienta + iteraciones)
-        $passHash = hash_pbkdf2(
-            'sha512',
-            $password,
-            $saltBin . $pepper,
-            (int) config('crypto.iterations'),
-            64,
-            true
-        );
-
-        // 3. Ambos hashes en binario, combinados con XOR
-        $mixed = $userHash ^ $passHash;
-
-        // 4. Sello final: el XOR nunca se guarda crudo
-        $final = hash_hmac('sha512', $saltBin . $mixed, $pepper, true);
-
         return [
-            'salt'      => $salt,
-            'user_hash' => bin2hex($userHash),
-            'pass_hash' => bin2hex($passHash),
-            'xor'       => bin2hex($mixed),
-            'final'     => bin2hex($final),
+            'password' => Hash::make($password),
+            'salt' => bin2hex(random_bytes(32)),
+            'crypto_version' => config('crypto.version'),
         ];
     }
 
-    /** Hex a cadena de 0 y 1 (para mostrar el binario). */
-    public static function toBits(string $hex): string
+    public static function check(User $user, #[\SensitiveParameter] string $password): bool
     {
-        $bits = '';
-        foreach (str_split(hex2bin($hex)) as $byte) {
-            $bits .= str_pad(decbin(ord($byte)), 8, '0', STR_PAD_LEFT);
+        if ($user->crypto_version === 1) {
+            return self::checkLegacy($user, $password);
         }
 
-        return $bits;
+        return $user->crypto_version === config('crypto.version')
+            && Hash::info($user->password)['algoName'] === 'argon2id'
+            && Hash::check($password, $user->password);
     }
 
-    private static function pepper(): string
+    public static function checkTemporary(User $user, #[\SensitiveParameter] string $password): bool
     {
+        if ($user->temp_password_hash === null) {
+            // Previously issued temporary credentials lived in the password column.
+            return $user->must_change_password && self::check($user, $password);
+        }
+
+        return Hash::check($password, $user->temp_password_hash);
+    }
+
+    public static function temporarySessionProof(User $user): string
+    {
+        return hash_hmac('sha256', $user->temp_password_hash ?? $user->password, config('app.key'));
+    }
+
+    private static function checkLegacy(User $user, #[\SensitiveParameter] string $password): bool
+    {
+        if (! ctype_xdigit($user->salt) || strlen($user->salt) !== 64
+            || ! ctype_xdigit($user->password) || strlen($user->password) !== 128) {
+            return false;
+        }
+
         $pepper = (string) config('crypto.pepper');
 
         if (strlen($pepper) < 64) {
-            throw new RuntimeException('CRYPTO_PEPPER no está configurada o es demasiado corta (mínimo 64 caracteres).');
+            throw new RuntimeException('CRYPTO_PEPPER no está configurada para verificar credenciales anteriores.');
         }
 
-        return $pepper;
+        $salt = hex2bin($user->salt);
+        $email = mb_strtolower(trim($user->email));
+        $userHash = hash_hmac('sha512', $email, $pepper.$salt, true);
+        $passwordHash = hash_pbkdf2('sha512', $password, $salt.$pepper, config('crypto.iterations'), 64, true);
+        $legacyHash = hash_hmac('sha512', $salt.($userHash ^ $passwordHash), $pepper);
+
+        return hash_equals($user->password, $legacyHash);
     }
 }

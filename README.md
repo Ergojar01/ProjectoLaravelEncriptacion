@@ -3,7 +3,7 @@
 Plataforma de gestión de usuarios con control de acceso por niveles, credenciales protegidas criptográficamente y enmascaramiento de rutas.
 
 ## Características Principales
-- **Seguridad Criptográfica:** Contraseñas protegidas mediante hash avanzado con una *salt* aleatoria única de 256 bits por usuario, *pepper* secreta almacenada fuera de la base de datos y control de versiones criptográficas.
+- **Seguridad Criptográfica:** Las nuevas contraseñas y claves temporales se guardan con Argon2id mediante Laravel. Los hashes de la versión anterior se verifican con su configuración original y se migran al iniciar sesión correctamente o cambiar la contraseña.
 - **Control de Roles (RBAC):**
   - **Nivel 500 (Administrador):** Control total, creación y gestión de usuarios.
   - **Nivel 499 (Visor):** Acceso de solo lectura y panel de estadísticas.
@@ -28,7 +28,7 @@ cd ProjectoLaravelEncriptacion
 ```bash
 cp .env.example .env
 ```
-*(Asegúrate de configurar los datos de conexión a la base de datos y la variable de encriptación en el `.env`).*
+Configura la conexión a la base de datos en el archivo local `.env`. Si existen cuentas con el esquema anterior, conserva su `CRYPTO_PEPPER` y `CRYPTO_ITERATIONS` originales en la configuración privada hasta completar la migración.
 
 3. Levantar los contenedores:
 ```bash

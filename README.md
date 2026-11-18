@@ -12,6 +12,10 @@ Plataforma de gestión de usuarios con control de acceso por niveles, credencial
 - **Entorno Dockerizado:** Infraestructura completa con contenedores optimizados para PHP/Laravel, servidor web, base de datos MySQL y automatización de NPM (Node).
 - **Interfaz Consistente:** Paneles adaptados por rol con tarjetas de bienvenida y estadísticas dinámicas.
 
+## Comprobación de contraseñas nuevas
+
+El registro, el alta administrativa, el cambio de contraseña y la asignación de claves temporales comparan la contraseña y sus variantes normalizadas con una tabla local de hashes SHA-256 en `config/password_blocklist.php`. La verificación funciona sin conexión. Solo detecta entradas de la tabla y las variantes que coincidan tras la normalización. Para ampliarla, añade como claves los SHA-256 en minúsculas de contraseñas públicas conocidas o de sus bases normalizadas y vuelve a generar la caché de configuración si está habilitada. Las contraseñas de las cuentas se siguen almacenando con Argon2id.
+
 ## Requisitos Previos
 - Docker y Docker Compose
 - WSL 2 (Windows Subsystem for Linux)

@@ -1,55 +1,53 @@
-# docker-compose.yml
-version: '8.3.36-apache'
-
 services:
   app:
     build:
       context: .
       dockerfile: ./docker/php/Dockerfile
-    container_name: laravel_roles_app
     ports:
       - "127.0.0.1:80:80"
+    environment:
+      APP_DEBUG: "false"
+      SESSION_ENCRYPT: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: laravel_roles
+      DB_USERNAME: laravel_user
+      DB_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD en .env}
     volumes:
       - .:/var/www/html
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
-      - laravel_network
+      - frontend
+      - database
     command: bash -c "npm install && npm run build && apache2-foreground"
 
   db:
     image: mysql:8.0
-    container_name: laravel_roles_db
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: laravel_roles
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_USER: laravel_user
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "127.0.0.1:3306:3306"
+      MYSQL_ROOT_HOST: localhost
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Configura DB_ROOT_PASSWORD en .env}
+      LARAVEL_DB_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD en .env}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?Configura DB_MIGRATION_PASSWORD en .env}
     volumes:
       - dbdata:/var/lib/mysql
+      - ./docker/mysql/10-privileges.sh:/docker-entrypoint-initdb.d/10-privileges.sh:ro
     networks:
-      - laravel_network
-
-  # NUEVO SERVICIO: phpMyAdmin
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: laravel_roles_pma
-    ports:
-      - "127.0.0.1:8081:80" # Puedes cambiar el 8080 si ese puerto ya está ocupado
-    environment:
-      PMA_HOST: db # Debe coincidir con el nombre del servicio de MySQL
-
-    depends_on:
-      - db
-    networks:
-      - laravel_network
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
 networks:
-  laravel_network:
-    driver: bridge
+  frontend:
+  database:
+    internal: true
 
 volumes:
   dbdata:

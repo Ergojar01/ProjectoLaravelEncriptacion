@@ -21,13 +21,20 @@
             <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg> Mi perfil
         </a>
 
-        @if(auth()->user()->role_level >= 500)
-            @php($pend = \App\Models\User::whereNotNull('temp_requested_at')->count())
+        @can('view-admin-records')
             <span class="nav-label">Capitanía</span>
             <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación @if($pend) <span class=\"badge b-you\">{{ $pend }}</span> @endif
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación
             </a>
-        @endif
+            <a href="{{ route('admin.audit.index') }}" class="{{ request()->routeIs('admin.audit.*') ? 'active' : '' }}">
+                Auditoría
+            </a>
+        @endcan
+        @can('view-password-hashes')
+            <a href="{{ route('admin.hashes.index') }}" class="{{ request()->routeIs('admin.hashes.*') ? 'active' : '' }}">
+                Hashes de contraseñas
+            </a>
+        @endcan
     </nav>
     @endunless
 

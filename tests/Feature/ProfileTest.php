@@ -4,96 +4,64 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class ProfileTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_profile_page_is_displayed(): void
+    public function test_profile_page_is_displayed_inside_the_portal(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
-            ->actingAs($user)
-            ->get('/profile');
-
-        $response->assertOk();
+        $this->actingAs($user)->get(route('profile.edit'), ['Sec-Fetch-Dest' => 'iframe'])
+            ->assertOk()->assertSee($user->name)->assertSee($user->email);
     }
 
-    public function test_profile_information_can_be_updated(): void
+    public function test_profile_route_does_not_accept_changes_to_account_information(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
-            ->actingAs($user)
-            ->patch('/profile', [
-                'name' => 'Test User',
-                'email' => 'test@example.com',
-            ]);
+        $this->actingAs($user)->patch(route('profile.edit'), [
+            'name' => 'Nombre nuevo',
+            'email' => 'nuevo@example.test',
+        ])->assertMethodNotAllowed();
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
-
-        $user->refresh();
-
-        $this->assertSame('Test User', $user->name);
-        $this->assertSame('test@example.com', $user->email);
-        $this->assertNull($user->email_verified_at);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'name' => $user->name, 'email' => $user->email]);
     }
 
-    public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged(): void
+    public function test_admin_edit_preserves_verification_when_the_email_address_is_unchanged(): void
     {
+        $admin = User::factory()->create(['role_level' => 500]);
         $user = User::factory()->create();
 
-        $response = $this
-            ->actingAs($user)
-            ->patch('/profile', [
-                'name' => 'Test User',
-                'email' => $user->email,
-            ]);
+        $this->actingAs($admin)->patch(route('admin.users.update', $user), [
+            'name' => 'Nombre nuevo',
+            'email' => $user->email,
+        ])->assertSessionHasNoErrors();
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
-
-        $this->assertNotNull($user->refresh()->email_verified_at);
+        $this->assertSame('Nombre nuevo', $user->fresh()->name);
+        $this->assertTrue($user->fresh()->email_verified_at->equalTo($user->email_verified_at));
     }
 
-    public function test_user_can_delete_their_account(): void
+    #[TestWith([499])]
+    #[TestWith([300])]
+    public function test_lower_levels_cannot_delete_their_own_profile(int $level): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['role_level' => $level]);
 
-        $response = $this
-            ->actingAs($user)
-            ->delete('/profile', [
-                'password' => 'password',
-            ]);
+        $this->actingAs($user)->delete(route('profile.edit'))->assertMethodNotAllowed();
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/');
-
-        $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'deactivated_at' => null]);
     }
 
-    public function test_correct_password_must_be_provided_to_delete_account(): void
+    public function test_legacy_profile_delete_path_is_unavailable(): void
     {
         $user = User::factory()->create();
 
-        $response = $this
-            ->actingAs($user)
-            ->from('/profile')
-            ->delete('/profile', [
-                'password' => 'wrong-password',
-            ]);
+        $this->actingAs($user)->delete('/profile')->assertNotFound();
 
-        $response
-            ->assertSessionHasErrorsIn('userDeletion', 'password')
-            ->assertRedirect('/profile');
-
-        $this->assertNotNull($user->fresh());
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'deactivated_at' => null]);
     }
 }

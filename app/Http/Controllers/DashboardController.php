@@ -8,7 +8,7 @@ class DashboardController extends Controller
 {
     /**
      * Los tres niveles (500, 499 y 300) ven exactamente la misma pantalla de
-     * bienvenida. Los permisos se siguen aplicando en el servidor (middleware role).
+     * bienvenida. Los permisos se siguen aplicando en el servidor (Gates de Laravel).
      */
     public function index()
     {

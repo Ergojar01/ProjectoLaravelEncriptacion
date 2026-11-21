@@ -33,6 +33,9 @@ class PasswordResetTest extends TestCase
             ->assertSessionHas('status', $status);
 
         $this->assertNotNull($user->refresh()->temp_requested_at);
+        $this->assertDatabaseHas('password_resets', [
+            'user_id' => $user->id, 'requested_at' => $user->temp_requested_at, 'token_hash' => null,
+        ]);
     }
 
     public function test_recovery_requires_admin_reauthentication_and_confirmed_temporary_password(): void
@@ -79,6 +82,10 @@ class PasswordResetTest extends TestCase
         $this->assertSame($original, $user->password);
         $this->assertTrue(Hash::check(self::TEMPORARY, $user->temp_password_hash));
         $this->assertArrayNotHasKey('temp_password_hash', $user->toArray());
+        $this->assertDatabaseHas('password_resets', [
+            'user_id' => $user->id, 'token_hash' => $user->temp_password_hash,
+            'expires_at' => $user->temp_password_expires_at, 'used_at' => null,
+        ]);
 
         Auth::forgetGuards();
         $this->flushSession();
@@ -87,6 +94,9 @@ class PasswordResetTest extends TestCase
         $this->post(route('login.store'), ['email' => $user->email, 'password' => self::TEMPORARY, 'remember' => true])
             ->assertRedirect(route('mask'))
             ->assertCookieMissing(Auth::guard()->getRecallerName());
+        $this->assertDatabaseHas('password_resets', [
+            'user_id' => $user->id, 'used_at' => $user->fresh()->temp_password_used_at,
+        ]);
 
         $session = session()->all();
         Auth::forgetGuards();
@@ -117,6 +127,7 @@ class PasswordResetTest extends TestCase
         $this->assertFalse($user->must_change_password);
         $this->assertNull($user->temp_password_hash);
         $this->assertTrue(Hash::check(self::NEW, $user->password));
+        $this->assertDatabaseMissing('password_resets', ['user_id' => $user->id]);
     }
 
     public function test_expired_temporary_credential_cannot_be_used(): void

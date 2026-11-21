@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -32,22 +33,31 @@ class User extends Authenticatable
         'temp_password_hash',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (User $user): void {
+            $user->username ??= (string) Str::uuid();
+        });
+    }
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'role_level'        => 'integer',
-            'crypto_version'    => 'integer',
-            'must_change_password'     => 'boolean',
+            'deactivated_at' => 'datetime',
+            'role_level' => 'integer',
+            'crypto_version' => 'integer',
+            'must_change_password' => 'boolean',
             'temp_password_expires_at' => 'datetime',
-            'temp_password_used_at'    => 'datetime',
-            'temp_requested_at'        => 'datetime',
+            'temp_password_used_at' => 'datetime',
+            'temp_requested_at' => 'datetime',
         ];
     }
 
     public function credentialQuery(): Builder
     {
         return self::query()->whereKey($this->getKey())
+            ->whereNull('deactivated_at')
             ->where('password', $this->password)
             ->where('temp_password_hash', $this->temp_password_hash)
             ->where('must_change_password', $this->must_change_password);
@@ -63,19 +73,19 @@ class User extends Authenticatable
 
     public function getRoleNameAttribute(): string
     {
-        return match (true) {
-            $this->role_level >= 500 => 'Administrador',
-            $this->role_level >= 499 => 'Visualizador',
-            default                  => 'Usuario básico',
+        return match ($this->role_level) {
+            500 => 'Administrador',
+            499 => 'Visualizador',
+            default => 'Usuario básico',
         };
     }
 
     public function getRoleClassAttribute(): string
     {
-        return match (true) {
-            $this->role_level >= 500 => 'b-500',
-            $this->role_level >= 499 => 'b-499',
-            default                  => 'b-300',
+        return match ($this->role_level) {
+            500 => 'b-500',
+            499 => 'b-499',
+            default => 'b-300',
         };
     }
 

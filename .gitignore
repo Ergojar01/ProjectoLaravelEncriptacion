@@ -4,10 +4,20 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
-# Archivos de entorno (nunca subir credenciales)
-# colocar env
-.env.backup
-.env.production
+# Entornos, credenciales y copias de bases de datos
+.env
+.env.*
+!.env.example
+/backups/
+*.sql
+*.sql.gz
+*.sql.gpg
+*.sql.gz.gpg
+*.sqlite
+*.sqlite-*
+*.pem
+*.key
+.my.cnf
 
 # Archivos autogenerados y caché de Laravel
 public/build
@@ -31,9 +41,3 @@ Homestead.yaml
 /.fleet
 /.idea
 /.vscode
-
-# Ignorar la persistencia de datos de MySQL en Docker
-/docker/mysql/data.env
-.env
-.env
-.env.save

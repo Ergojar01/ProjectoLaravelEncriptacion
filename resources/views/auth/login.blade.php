@@ -5,7 +5,7 @@
     <!-- Si la sesión caduca dentro del portal, sale del iframe y vuelve al login -->
     <script>
         if (window.self !== window.top) {
-            window.top.location.href = '{{ route("login") }}';
+            window.top.location.href = {{ Illuminate\Support\Js::from(route("login", absolute: false)) }};
         }
     </script>
 

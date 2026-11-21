@@ -1,8 +1,14 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\ForcePasswordChange;
+use App\Http\Middleware\FramedOnly;
+use App\Http\Middleware\RequireCsrfToken;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -15,15 +21,16 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Alias usados en las rutas
         $middleware->alias([
-            'role'   => \App\Http\Middleware\CheckRoleLevel::class,
-            'framed' => \App\Http\Middleware\FramedOnly::class,
-            'force.password' => \App\Http\Middleware\ForcePasswordChange::class,
+            'active.account' => EnsureAccountIsActive::class,
+            'framed' => FramedOnly::class,
+            'force.password' => ForcePasswordChange::class,
         ]);
 
         // Cabeceras de seguridad en todas las respuestas web
-        $middleware->web(append: [
-            \App\Http\Middleware\SecurityHeaders::class,
-        ]);
+        $middleware->web(
+            append: [SecurityHeaders::class],
+            replace: [PreventRequestForgery::class => RequireCsrfToken::class],
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (ValidationException $exception, Request $request) {

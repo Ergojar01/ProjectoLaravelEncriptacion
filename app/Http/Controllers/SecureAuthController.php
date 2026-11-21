@@ -4,17 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\CredentialHasher;
+use App\Services\LoginAttempts;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 class SecureAuthController extends Controller
 {
-    private const LOGIN_LOCK_SECONDS = 180;
-
     public function register(Request $request)
     {
         if (is_string($email = $request->input('email'))) {
@@ -22,16 +21,16 @@ class SecureAuthController extends Controller
         }
 
         $data = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
             'password' => PasswordPolicy::rules(),
         ], PasswordPolicy::messages());
 
         $user = User::create([
-            'name'           => $data['name'],
-            'email'          => $data['email'],
+            'name' => $data['name'],
+            'email' => $data['email'],
             ...CredentialHasher::attributes($data['password']),
-            'role_level'     => 300,
+            'role_level' => 300,
         ]);
 
         Auth::login($user);
@@ -40,69 +39,58 @@ class SecureAuthController extends Controller
         return redirect()->route('mask');
     }
 
-    public function login(Request $request)
+    public function login(Request $request, LoginAttempts $attempts)
     {
         if (is_string($email = $request->input('email'))) {
             $request->merge(['email' => Str::lower(trim($email))]);
         }
 
         $credentials = $request->validate([
-            'email'    => ['required', 'email'],
+            'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string'],
         ], PasswordPolicy::messages());
 
-        $key  = 'login:' . $credentials['email'];   // contador de fallos
-        $lock = 'lock:'  . $credentials['email'];   // bloqueo activo
-
-        if (RateLimiter::tooManyAttempts($lock, 1)) {
-            $s = RateLimiter::availableIn($lock);
-
-            return back()
-                ->withErrors(['email' => 'Cuenta bloqueada por intentos fallidos. Intenta de nuevo en ' . ceil($s / 60) . ' min (' . $s . ' s).'])
-                ->with('lock_seconds', $s)
-                ->onlyInput('email');
-        }
-
-        $user = User::where('email', $credentials['email'])->first();
-
+        $user = User::where('email', $credentials['email'])->whereNull('deactivated_at')->first();
         $password = $credentials['password'];
         $temporary = $user?->must_change_password;
+        $attempt = $attempts->verify($credentials['email'], $user, $request->ip(), function () use ($user, $password, $temporary): bool {
+            if ($user === null) {
+                Hash::make($password);
 
-        if ($user) {
-            $valid = $temporary
-                ? CredentialHasher::checkTemporary($user, $password)
-                : CredentialHasher::check($user, $password);
-        } else {
-            // Approximate the work of checking a credential for an existing account.
-            Hash::make($password);
-            $valid = false;
-        }
-
-        if (! $valid) {
-            RateLimiter::hit($key, 300);
-
-            if (RateLimiter::attempts($key) >= 3) {
-                RateLimiter::hit($lock, self::LOGIN_LOCK_SECONDS);
-                RateLimiter::clear($key);
-
-                return back()
-                    ->withErrors(['email' => 'Fallaste 3 veces. Cuenta bloqueada durante 3 minutos.'])
-                    ->with('lock_seconds', self::LOGIN_LOCK_SECONDS)
-                    ->onlyInput('email');
+                return false;
             }
 
-            $left = 3 - RateLimiter::attempts($key);
+            return $temporary ? CredentialHasher::checkTemporary($user, $password) : CredentialHasher::check($user, $password);
+        });
 
-            return back()
-                ->withErrors(['email' => "Credenciales incorrectas. Te quedan {$left} intento(s)."])
-                ->onlyInput('email');
+        if ($attempt['seconds'] > 0) {
+            $seconds = $attempt['seconds'];
+            $message = $attempt['failures'] === 3
+                ? 'Fallaste 3 veces. Cuenta bloqueada durante 3 minutos.'
+                : "Cuenta bloqueada por intentos fallidos. Intenta de nuevo en {$seconds} s.";
+
+            return back()->withErrors(['email' => $message])->with('lock_seconds', $seconds)->onlyInput('email');
+        }
+
+        if ($attempt['failures'] > 0) {
+            $left = 3 - $attempt['failures'];
+
+            return back()->withErrors(['email' => "Credenciales incorrectas. Te quedan {$left} intento(s)."])->onlyInput('email');
         }
 
         if ($temporary) {
-            $claimed = $user->credentialQuery()
-                ->whereNull('temp_password_used_at')
-                ->where('temp_password_expires_at', '>', now())
-                ->update(['temp_password_used_at' => now()]);
+            $claimed = DB::transaction(function () use ($user): int {
+                $usedAt = now();
+                $updated = $user->credentialQuery()
+                    ->whereNull('temp_password_used_at')
+                    ->where('temp_password_expires_at', '>', $usedAt)
+                    ->update(['temp_password_used_at' => $usedAt]);
+                if ($updated) {
+                    DB::table('password_resets')->where('user_id', $user->id)->update(['used_at' => $usedAt]);
+                }
+
+                return $updated;
+            });
 
             if (! $claimed) {
                 return back()
@@ -119,7 +107,6 @@ class SecureAuthController extends Controller
             $user->forceFill($attributes);
         }
 
-        RateLimiter::clear($key);
         Auth::login($user, ! $temporary && $request->boolean('remember'));
         $this->startSession($request, $user);
 
@@ -162,11 +149,21 @@ class SecureAuthController extends Controller
             'email' => ['required', 'email', 'max:255'],
         ], PasswordPolicy::messages());
 
-        $user = User::where('email', $data['email'])->first();
-
-        if ($user && (int) $user->role_level < 500) {
-            $user->forceFill(['temp_requested_at' => now()])->save();
-        }
+        DB::transaction(function () use ($data): void {
+            $user = User::where('email', $data['email'])
+                ->whereIn('role_level', [300, 499])
+                ->whereNull('deactivated_at')
+                ->lockForUpdate()
+                ->first();
+            if ($user !== null) {
+                $requestedAt = now();
+                $user->forceFill(['temp_requested_at' => $requestedAt])->save();
+                DB::table('password_resets')->upsert([
+                    'user_id' => $user->id,
+                    'requested_at' => $requestedAt,
+                ], ['user_id'], ['requested_at']);
+            }
+        });
 
         return back()->with('status', 'Si el correo pertenece a una cuenta de nivel 300 o 499, el administrador ya vio tu solicitud. Él te entregará una clave temporal.');
     }

@@ -6,6 +6,8 @@ use App\Services\CredentialHasher;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -74,15 +76,28 @@ class ProfileController extends Controller
             $query->where('temp_password_used_at', '>', now()->subMinutes(5));
         }
 
-        if (! $query->update($attributes)) {
+        $updated = DB::transaction(function () use ($user, $query, $attributes): int {
+            $updated = $query->update($attributes);
+            if ($updated) {
+                DB::table('password_resets')->where('user_id', $user->id)->delete();
+                $user->revokeDatabaseSessions();
+            }
+
+            return $updated;
+        });
+
+        if (! $updated) {
             throw ValidationException::withMessages(['current_password' => 'La credencial cambió o venció. Vuelve a iniciar sesión.']);
         }
 
         $user->forceFill($attributes);
-        $user->revokeDatabaseSessions();
         RateLimiter::clear($key);
         $request->session()->forget(['temporary_password_proof', 'auth.password_confirmed_at']);
         $request->session()->regenerate(true);
+        $request->session()->put(
+            'password_hash_'.Auth::getDefaultDriver(),
+            Auth::guard()->hashPasswordForCookie($user->password),
+        );
 
         return $forced
             ? redirect()->route('dashboard')->with('status', 'Contraseña actualizada. Ya puedes usar el sistema.')

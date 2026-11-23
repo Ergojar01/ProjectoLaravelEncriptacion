@@ -11,7 +11,7 @@ Aplicación web en **PHP 8.4 / Laravel 13 / MySQL 8** (Docker + Apache con HTTPS
 
 ## Instalación y ejecución
 
-### Opción 1: Ejecución rápida (Recomendada para evaluación y entrega)
+### Opción 1: Ejecución rápida 
 
 Para ejecutar la aplicación con un solo comando, con los contenedores compilados y la base de datos preinicializada con los datos de prueba:
 

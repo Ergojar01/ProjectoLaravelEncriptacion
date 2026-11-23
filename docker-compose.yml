@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
     ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+      - "8080:80"
+      - "8443:443"
     env_file: .env
     environment:
       APP_DEBUG: "false"

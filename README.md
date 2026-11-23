@@ -11,6 +11,29 @@ Aplicación web en **PHP 8.4 / Laravel 13 / MySQL 8** (Docker + Apache con HTTPS
 
 ## Instalación y ejecución
 
+### Opción 1: Ejecución rápida (Recomendada para evaluación y entrega)
+
+Para ejecutar la aplicación con un solo comando, con los contenedores compilados y la base de datos preinicializada con los datos de prueba:
+
+- **En Windows:**  
+  Haz doble clic en `iniciar.bat` (o ejecuta `iniciar.bat` desde PowerShell / CMD).
+- **En Linux / macOS:**  
+  Ejecuta `./iniciar.sh` en la terminal.
+- **Con Docker Compose directamente:**  
+  ```bash
+  docker compose up -d --build
+  ```
+
+El script se encarga automáticamente de:
+1. Validar e iniciar los contenedores en segundo plano (`app` y `db`).
+2. Restaurar la base de datos completa con sus usuarios de prueba (`docker/mysql/20-init-data.sql`).
+3. Inicializar y configurar los permisos necesarios en los directorios de almacenamiento (`storage/framework`).
+4. Abrir la aplicación directamente en **https://localhost** *(recuerda aceptar la advertencia del certificado autofirmado)*.
+
+---
+
+### Opción 2: Instalación y aprovisionamiento manual avanzado
+
 Copia `.env.example` a `.env` solo si es una instalación nueva. Configura `DB_PASSWORD` y `CRYPTO_PEPPER` en el `.env` de Laravel. Para cuentas existentes, conserva el `APP_KEY`, `CRYPTO_PEPPER` y los parámetros criptográficos originales. Guarda las credenciales privilegiadas fuera del directorio montado por el contenedor de la aplicación.
 
 ```bash

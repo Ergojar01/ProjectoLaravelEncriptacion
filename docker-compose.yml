@@ -22,7 +22,11 @@ services:
       db:
         condition: service_healthy
     networks: [frontend, database]
-    command: apache2-foreground
+    command: >
+      sh -c "mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+      && chown -R www-data:www-data storage bootstrap/cache
+      && chmod -R 775 storage bootstrap/cache
+      && exec apache2-foreground"
 
   db:
     build:

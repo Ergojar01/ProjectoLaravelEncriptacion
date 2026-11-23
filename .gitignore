@@ -38,6 +38,7 @@ Homestead.yaml
 !.env.example
 *.sql
 !scripts/privilegios_minimos.sql
+!docker/mysql/20-init-data.sql
 *.sql.*
 *.enc
 *.gpg

@@ -36,6 +36,10 @@
         <button class="btn btn-primary btn-block">Iniciar sesión</button>
     </form>
 
-    <p class="auth-alt muted small">Las cuentas las crea el administrador del sistema.</p>
+    @if(config('security.registration.enabled'))
+        <p class="auth-alt"><a href="{{ route('register') }}">Crear cuenta</a></p>
+    @else
+        <p class="auth-alt muted small">Las cuentas las crea el administrador del sistema.</p>
+    @endif
     <p class="auth-alt"><a href="{{ route('password.recover') }}">¿Olvidaste tu contraseña?</a></p>
 @endsection

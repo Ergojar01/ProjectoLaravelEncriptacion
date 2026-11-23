@@ -30,6 +30,8 @@ return [
         'check_pwned' => (bool) env('SECURITY_CHECK_PWNED', true),
     ],
 
+    'registration' => ['enabled' => env('SECURITY_ALLOW_REGISTRATION', false)],
+
     'demo_seed' => (bool) env('SECURITY_DEMO_SEED', false),
 
     'force_https' => (bool) env('FORCE_HTTPS', false),

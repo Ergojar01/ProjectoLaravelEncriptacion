@@ -8,13 +8,52 @@ use App\Services\Credentials;
 use App\Services\LoginThrottle;
 use App\Support\PasswordPolicy;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\View\View;
 
 class SecureAuthController extends Controller
 {
+    public function registrationForm(): View
+    {
+        abort_unless(config('security.registration.enabled'), 404);
+
+        return view('auth.register');
+    }
+
+    public function register(Request $request): RedirectResponse
+    {
+        abort_unless(config('security.registration.enabled'), 404);
+
+        $email = $request->input('email');
+        if (is_string($email)) {
+            $email = Str::lower(trim($email));
+            $request->merge(['email' => $email]);
+        }
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'confirmed', ...PasswordPolicy::rules(is_string($email) ? $email : null)],
+        ], PasswordPolicy::messages());
+
+        $user = new User([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'role_level' => 300,
+            'is_active' => true,
+        ]);
+        Credentials::apply($user, $data['password']);
+        $user->save();
+
+        Audit::log('user_registered', Audit::SUCCESS, $user);
+
+        return redirect()->route('login')->with('status', 'Cuenta creada. Ya puedes iniciar sesión.');
+    }
+
     public function login(Request $request)
     {
         if (is_string($email = $request->input('email'))) {

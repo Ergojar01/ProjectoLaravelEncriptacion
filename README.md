@@ -48,6 +48,10 @@ docker compose up -d app
 
 Abre **https://localhost**. El certificado autofirmado se limita al laboratorio. Configura un transporte SMTP para enviar enlaces de recuperación. En un laboratorio sin SMTP, `RESET_SHOW_LINK=true` muestra el enlace de prueba al administrador. Mantén esta opción desactivada con cuentas reales.
 
+### Probar el autorregistro y las contraseñas
+
+En el `.env` del laboratorio, configura `SECURITY_ALLOW_REGISTRATION=true` y ejecuta `docker compose up -d app`. Si usas la caché de configuración de Laravel, ejecuta también `docker compose exec app php artisan config:clear`. Pulsa **Crear cuenta** en la pantalla de inicio o abre [https://localhost/registro](https://localhost/registro). El registro crea cuentas de nivel 300 con la misma política de contraseñas que el alta administrativa. El ajuste está desactivado por defecto.
+
 ### Consultar MySQL con phpMyAdmin
 
 Desde la raíz del proyecto, carga los mismos archivos de entorno e inicia el servicio opcional.

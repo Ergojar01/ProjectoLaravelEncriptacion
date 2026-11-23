@@ -259,11 +259,34 @@ class SecurityTest extends TestCase
         $this->actingAs($u)->put('/perfil/clave', ['current_password' => self::PASS, 'password' => $long, 'password_confirmation' => $long])->assertSessionHasNoErrors();
     }
 
-    // --- Registro público eliminado -------------------------------------------
-    public function test_no_existe_registro_publico(): void
+    // --- Autorregistro opcional -----------------------------------------------
+    public function test_registration_is_disabled_by_default(): void
     {
         $this->get('/registro')->assertNotFound();
         $this->post('/registro', ['name' => 'X', 'email' => 'x@test.com'])->assertStatus(404);
+    }
+
+    public function test_registration_uses_the_password_policy_and_creates_only_basic_users(): void
+    {
+        config(['security.registration.enabled' => true]);
+        $this->get(route('login'))->assertSee('Crear cuenta');
+        $this->get(route('register'))->assertOk();
+        $data = ['name' => 'Cuenta de prueba', 'email' => 'PRUEBA@haki.test', 'role_level' => 500];
+        foreach (['Ab1!', 'Password123!!', 'Prueba#Segura987!', 'LunaSinNumeros!'] as $password) {
+            $this->post(route('register.store'), $data + [
+                'password' => $password, 'password_confirmation' => $password,
+            ])->assertSessionHasErrors('password');
+        }
+        $password = 'Marea#Nautica-2026!';
+        $this->post(route('register.store'), $data + [
+            'password' => $password, 'password_confirmation' => $password,
+        ])->assertRedirect(route('login'))->assertSessionHasNoErrors();
+
+        $user = User::where('email', 'prueba@haki.test')->sole();
+        $this->assertSame(300, $user->role_level);
+        $this->assertTrue(Credentials::check($user, $password));
+        $this->assertDatabaseHas('audit_logs', ['event' => 'user_registered', 'user_id' => $user->id]);
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => $password])->assertRedirect(route('mask'));
     }
 
     // --- Desactivar sin borrar ------------------------------------------------

@@ -23,6 +23,9 @@ Route::get('/', function () {
 Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware(['auth', 'active', 'auth.session']);
 
 Route::middleware('guest')->group(function () {
+    Route::get('/registro', [SecureAuthController::class, 'registrationForm'])->name('register');
+    Route::post('/registro', [SecureAuthController::class, 'register'])->middleware('throttle:5,1')->name('register.store');
+
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');
 
     // Recuperación: la persona solicita, el administrador autoriza, la persona define su clave con un enlace de un solo uso

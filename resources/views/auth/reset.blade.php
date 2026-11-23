@@ -30,20 +30,14 @@
             <div class="field">
                 <label for="new_password">Contraseña nueva</label>
                 <div class="input-wrap">
-                    <input id="new_password" name="password" type="password" autocomplete="new-password" required autofocus>
+                    <input id="new_password" name="password" aria-describedby="new_password_rules" type="password" autocomplete="new-password" required autofocus>
                     <button type="button" class="toggle" data-toggle-pass="new_password">Mostrar</button>
                 </div>
             </div>
-            <ul class="rules" data-pass-rules="new_password">
-                <li data-rule="len">Mínimo 12 caracteres</li>
-                <li data-rule="up">Una mayúscula</li>
-                <li data-rule="low">Una minúscula</li>
-                <li data-rule="num">Un número</li>
-                <li data-rule="sym">Un símbolo</li>
-            </ul>
+            @include('components.password-rules', ['input' => 'new_password'])
             <div class="field">
                 <label for="new_password_confirmation">Confirmar contraseña nueva</label>
-                <input id="new_password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
+                <input id="new_password_confirmation" name="password_confirmation" aria-describedby="new_password_rules" type="password" autocomplete="new-password" required>
             </div>
             <button class="btn btn-primary btn-block">Guardar contraseña</button>
         </form>

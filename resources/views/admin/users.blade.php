@@ -156,20 +156,14 @@
                         <div class="field">
                             <label for="n_pass">Contraseña inicial</label>
                             <div class="input-wrap">
-                                <input id="n_pass" name="password" type="password" autocomplete="new-password" required>
+                                <input id="n_pass" name="password" aria-describedby="n_pass_rules" type="password" autocomplete="new-password" required>
                                 <button type="button" class="toggle" data-toggle-pass="n_pass">Mostrar</button>
                             </div>
                         </div>
-                        <ul class="rules" data-pass-rules="n_pass">
-                            <li data-rule="len">Mínimo 12 caracteres</li>
-                            <li data-rule="up">Una mayúscula</li>
-                            <li data-rule="low">Una minúscula</li>
-                            <li data-rule="num">Un número</li>
-                            <li data-rule="sym">Un símbolo</li>
-                        </ul>
+                        @include('components.password-rules', ['input' => 'n_pass'])
                         <div class="field">
                             <label for="n_conf">Confirmar contraseña</label>
-                            <input id="n_conf" name="password_confirmation" type="password" autocomplete="new-password" required>
+                            <input id="n_conf" name="password_confirmation" aria-describedby="n_pass_rules" type="password" autocomplete="new-password" required>
                         </div>
                         <div class="field">
                             <label for="n_level">Nivel de acceso</label>

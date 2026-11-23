@@ -270,7 +270,9 @@ class SecurityTest extends TestCase
     {
         config(['security.registration.enabled' => true]);
         $this->get(route('login'))->assertSee('Crear cuenta');
-        $this->get(route('register'))->assertOk();
+        $this->get(route('register'))->assertOk()
+            ->assertSee('data-pass-rules="password"', false)
+            ->assertSee('data-rule="match"', false);
         $data = ['name' => 'Cuenta de prueba', 'email' => 'PRUEBA@haki.test', 'role_level' => 500];
         foreach (['Ab1!', 'Password123!!', 'Prueba#Segura987!', 'LunaSinNumeros!'] as $password) {
             $this->post(route('register.store'), $data + [

@@ -24,14 +24,15 @@
         <div class="field">
             <label for="password">Contraseña</label>
             <div class="input-wrap">
-                <input id="password" name="password" type="password" autocomplete="new-password" required>
+                <input id="password" name="password" aria-describedby="password_rules" type="password" autocomplete="new-password" required>
                 <button type="button" class="toggle" data-toggle-pass="password">Mostrar</button>
             </div>
         </div>
-        <p class="muted small">Usa al menos {{ config('security.password.min_length') }} caracteres e incluye mayúsculas, minúsculas, un número y un símbolo. Evita las contraseñas comunes y las que contienen tu nombre de usuario.</p>
+        @include('components.password-rules', ['input' => 'password'])
+        <p class="muted small">Al enviar, el servidor comprueba si la contraseña es común o incluye tu nombre de usuario.</p>
         <div class="field">
             <label for="password_confirmation">Confirmar contraseña</label>
-            <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
+            <input id="password_confirmation" name="password_confirmation" aria-describedby="password_rules" type="password" autocomplete="new-password" required>
         </div>
         <button class="btn btn-primary btn-block">Crear cuenta</button>
     </form>

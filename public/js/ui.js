@@ -9,18 +9,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Checklist en vivo de la política de contraseña
-  const rules = {
-    len: v => v.length >= 12,
-    up:  v => /[A-Z]/.test(v),
-    low: v => /[a-z]/.test(v),
-    num: v => /\d/.test(v),
-    sym: v => /[^A-Za-z0-9]/.test(v),
-  };
   document.querySelectorAll('[data-pass-rules]').forEach(list => {
     const input = document.getElementById(list.dataset.passRules);
-    const update = () => Object.entries(rules).forEach(([k, fn]) =>
-      list.querySelector(`[data-rule="${k}"]`).classList.toggle('ok', fn(input.value)));
+    const confirmation = input.form.elements.namedItem('password_confirmation');
+    const minimum = Number(list.dataset.minLength);
+    const rules = {
+      len: v => [...v].length >= minimum,
+      up: v => /\p{Lu}/u.test(v),
+      low: v => /\p{Ll}/u.test(v),
+      num: v => /\p{N}/u.test(v),
+      sym: v => /[\p{Z}\p{S}\p{P}]/u.test(v),
+      match: v => v !== '' && v === confirmation.value,
+    };
+    const update = () => {
+      list.querySelectorAll('[data-rule]').forEach(item => {
+        item.classList.toggle('ok', rules[item.dataset.rule](input.value));
+      });
+    };
     input.addEventListener('input', update);
+    confirmation.addEventListener('input', update);
     update();
   });
 

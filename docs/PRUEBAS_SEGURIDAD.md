@@ -1,0 +1,22 @@
+# Pruebas de seguridad (sección 10 del PDF)
+
+Entorno: `https://localhost`. Cuentas ficticias del README. Guarda cada captura en `docs/evidencias/` con el nombre indicado.
+Las pruebas automáticas equivalentes están en `tests/Feature/SecurityTest.php` (`php artisan test`).
+
+| # | Prueba | Cómo hacerla | Resultado esperado | Captura | ¿OK? |
+|---|---|---|---|---|---|
+| 1 | Contraseña incorrecta | Login con `basico300@haki.test` y clave errónea | «Credenciales incorrectas», sin acceso | `01_clave_incorrecta.png` | ☐ |
+| 2 | Tres intentos fallidos | Repite 3 veces la prueba 1 | Contador de 3 minutos; Bitácora muestra «Cuenta bloqueada» | `02_bloqueo.png` | ☐ |
+| 3 | Nueva sesión durante el bloqueo | Abre otra ventana privada e intenta con la clave **correcta** | Sigue bloqueado | `03_sesion_nueva.png` | ☐ |
+| 4 | Clave correcta tras el bloqueo | Espera 3 min e inicia sesión | Acceso permitido | `04_tras_bloqueo.png` | ☐ |
+| 5 | 300 intenta administración | Como 300 escribe `/admin/usuarios` | Acceso denegado / vuelve al portal; evento «Acceso no autorizado» en Bitácora | `05_300_admin.png` | ☐ |
+| 6 | 499 intenta crear usuario | Como 499 no aparece «+ Nuevo usuario»; (opcional) enviar el POST con DevTools | 403 | `06_499_crear.png` | ☐ |
+| 7 | 300 modifica el ID de otro | Como 300, en DevTools reenvía `PATCH /admin/usuarios/1/nivel` | 403 | `07_300_id_ajeno.png` | ☐ |
+| 8 | Caracteres SQL | Login con `' OR '1'='1' --` | No altera la autenticación | `08_sql.png` | ☐ |
+| 9 | HTML / JavaScript | Como 500 crea un usuario con nombre `<script>alert(1)</script>` | Se muestra como texto, no se ejecuta | `09_xss.png` | ☐ |
+| 10 | Sin token CSRF | En DevTools borra el campo `_token` y envía un formulario | Error 419 | `10_csrf.png` | ☐ |
+| 11 | Reutilizar sesión cerrada | Cierra sesión y usa «atrás» o copia la cookie anterior | Redirige al login | `11_sesion_cerrada.png` | ☐ |
+| 12 | Cambio de contraseña | Cambia la clave en dos navegadores a la vez | Hash nuevo; la otra sesión queda invalidada | `12_cambio_clave.png` | ☐ |
+| 13 | Restauración de backup | `./scripts/backup_db.sh`, borra un usuario, `./scripts/restore_db.sh ...` | Usuarios recuperados | `13_restore.png` | ☐ |
+| 14 | Recuperación con enlace | Solicita en `/recuperar-clave`, el 500 autoriza, usa el enlace dos veces | Primera vez cambia la clave; segunda: «Enlace no válido» | `14_enlace.png` | ☐ |
+| 15 | Hash solo para 500 | Como 499 no hay botón; como 500 pide tu clave y queda en Bitácora | Evento «Consulta de hash almacenado» | `15_hash.png` | ☐ |

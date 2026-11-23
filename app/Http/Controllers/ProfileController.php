@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\CredentialHasher;
+use App\Services\Audit;
+use App\Services\Credentials;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -17,9 +20,8 @@ class ProfileController extends Controller
     }
 
     /**
-     * Cambia la contraseña respetando el esquema criptográfico propio:
-     * sal nueva de 256 bits + PBKDF2-SHA512 + XOR + sello HMAC.
-     * No usa Hash::make (bcrypt) para no romper el login.
+     * Cambia la contraseña: exige la actual + nueva + confirmación (mínimo 12),
+     * guarda un hash Argon2id nuevo e invalida todas las demás sesiones.
      */
     public function updatePassword(Request $request): RedirectResponse
     {
@@ -28,34 +30,34 @@ class ProfileController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
+            Audit::log('password_changed', Audit::DENIED, $user, null, null, 'Cambio de clave bloqueado por demasiados intentos');
 
-            return back()->withErrors([
-                'current_password' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos.",
-            ]);
+            return back()->withErrors(['current_password' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos."]);
         }
 
         $data = $request->validate([
-            'current_password' => ['required', 'string'],
-            'password'         => ['required', 'confirmed', 'different:current_password', PasswordPolicy::rule()],
+            'current_password' => ['required', 'string', 'max:1024'],
+            'password'         => ['required', 'confirmed', 'different:current_password', ...PasswordPolicy::rules($user->email)],
         ], PasswordPolicy::messages());
 
-        if (! CredentialHasher::check($user->email, $data['current_password'], $user->salt, $user->password)) {
+        if (! Credentials::check($user, $data['current_password'])) {
             RateLimiter::hit($key, 300);
+            Audit::log('password_changed', Audit::FAILURE, $user, null, null, 'Contraseña actual incorrecta');
 
             return back()->withErrors(['current_password' => 'La contraseña actual no es correcta.']);
         }
 
-        $salt = CredentialHasher::newSalt();
-
-        $user->forceFill([
-            'salt'           => $salt,
-            'password'       => CredentialHasher::make($user->email, $data['password'], $salt),
-            'crypto_version' => config('crypto.version'),
-        ])->save();
+        Credentials::apply($user, $data['password']);
+        $user->forceFill(['remember_token' => Str::random(60)])->save();
 
         RateLimiter::clear($key);
         $request->session()->regenerate();
 
-        return back()->with('status', 'Contraseña actualizada. Se generó una sal nueva y se volvió a sellar.');
+        // Invalida todas las demás sesiones de esta cuenta (otros navegadores o equipos)
+        DB::table('sessions')->where('user_id', $user->id)->where('id', '!=', $request->session()->getId())->delete();
+
+        Audit::log('password_changed', Audit::SUCCESS, $user, null, null, 'Cambio voluntario de contraseña; otras sesiones invalidadas');
+
+        return back()->with('status', 'Contraseña actualizada. Se guardó un hash Argon2id nuevo y se cerraron tus otras sesiones.');
     }
 }

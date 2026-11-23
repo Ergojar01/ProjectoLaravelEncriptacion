@@ -1,32 +1,32 @@
 # docker/php/Dockerfile
-FROM php:8.3.36-apache
+FROM php:8.3-apache
 
-# Actualizar el sistema e instalar dependencias necesarias
 RUN apt-get update && apt-get install -y \
-    libzip-dev \
-    zip \
-    unzip \
-    git \
-    curl \
+    libzip-dev zip unzip git curl openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar extensiones de PHP requeridas por Laravel
 RUN docker-php-ext-install pdo_mysql zip
 
-# Habilitar el módulo mod_rewrite de Apache (esencial para las rutas de Laravel)
-RUN a2enmod rewrite
+# Módulos de Apache: rutas de Laravel, HTTPS y cabeceras
+RUN a2enmod rewrite ssl headers
 
-# Cambiar el DocumentRoot de Apache a la carpeta 'public' de Laravel
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+# Ocultar versión de Apache/PHP
+RUN echo "ServerTokens Prod\nServerSignature Off" > /etc/apache2/conf-available/hardening.conf && a2enconf hardening \
+    && echo "expose_php = Off" > /usr/local/etc/php/conf.d/hardening.ini
 
-# Instalar Composer (Gestor de dependencias de PHP)
+# Certificado AUTOFIRMADO solo para laboratorio (localhost). En producción usa un certificado real.
+RUN mkdir -p /etc/ssl/haki && openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+    -keyout /etc/ssl/haki/localhost.key -out /etc/ssl/haki/localhost.crt \
+    -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+# Sitios: el puerto 80 solo redirige a HTTPS; el 443 sirve la aplicación desde /public
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/apache/default-ssl.conf /etc/apache2/sites-available/default-ssl.conf
+RUN a2ensite default-ssl
+
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Configurar permisos para que el usuario de Apache pueda escribir en la carpeta
 RUN chown -R www-data:www-data /var/www/html
 
-# Instalar Node.js y npm directamente en la imagen de Docker
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs

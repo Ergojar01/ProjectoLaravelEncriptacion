@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SecureAuthController;
 use App\Http\Controllers\UserAdminController;
@@ -16,34 +18,47 @@ Route::get('/', function () {
     return view('auth.login');
 })->name('login');
 
-// 2. Portal: la única URL que ve el usuario (/portal). Todo lo demás vive dentro del iframe.
-Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware('auth');
+// 2. Portal: la única URL visible (/Dashboard). Todo lo demás vive dentro del iframe
+//    y cada solicitud se valida igualmente en el servidor (auth + active + role).
+Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware(['auth', 'active']);
 
 Route::middleware('guest')->group(function () {
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');
 
-    Route::view('/registro', 'auth.register')->name('register');
-    Route::post('/registro', [SecureAuthController::class, 'register'])->name('register.store');
+    // Recuperación: la persona solicita, el administrador autoriza, la persona define su clave con un enlace de un solo uso
+    Route::view('/recuperar-clave', 'auth.recover')->name('password.recover');
+    Route::post('/recuperar-clave', [SecureAuthController::class, 'requestReset'])->middleware('throttle:5,10')->name('password.recover.store');
+    Route::get('/restablecer/{token}', [PasswordResetController::class, 'show'])->middleware('throttle:20,10')->name('password.reset');
+    Route::post('/restablecer/{token}', [PasswordResetController::class, 'update'])->middleware('throttle:10,10')->name('password.reset.store');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/salir', [SecureAuthController::class, 'logout'])->name('logout');
 
     // Pantallas internas: solo se muestran dentro del portal ('framed')
     Route::middleware('framed')->group(function () {
         Route::get('/sistema', [DashboardController::class, 'index'])->name('dashboard');
 
-        // Perfil: cambio de contraseña con el cifrado propio del proyecto
+        // Perfil: cualquier nivel cambia SU contraseña
         Route::get('/perfil', [ProfileController::class, 'edit'])->name('profile.edit');
         Route::put('/perfil/clave', [ProfileController::class, 'updatePassword'])->name('profile.password');
 
         Route::prefix('admin')->name('admin.')->group(function () {
-            Route::middleware('role:499')->get('/usuarios', [UserAdminController::class, 'index'])->name('users.index');
+            // 499 y 500: consulta
+            Route::middleware('role:499')->group(function () {
+                Route::get('/usuarios', [UserAdminController::class, 'index'])->name('users.index');
+                Route::get('/auditoria', [AuditController::class, 'index'])->name('audit.index');
+            });
 
+            // Solo 500: administración
             Route::middleware('role:500')->group(function () {
                 Route::post('/usuarios', [UserAdminController::class, 'store'])->name('users.store');
+                Route::patch('/usuarios/{user}', [UserAdminController::class, 'update'])->name('users.update');
                 Route::patch('/usuarios/{user}/nivel', [UserAdminController::class, 'updateLevel'])->name('users.level');
-                Route::delete('/usuarios/{user}', [UserAdminController::class, 'destroy'])->name('users.destroy');
+                Route::patch('/usuarios/{user}/estado', [UserAdminController::class, 'toggleStatus'])->name('users.status');
+                Route::post('/usuarios/{user}/restablecer', [UserAdminController::class, 'authorizeReset'])->name('users.reset');
+                Route::get('/usuarios/{user}/hash', [UserAdminController::class, 'hashForm'])->name('users.hash.form');
+                Route::post('/usuarios/{user}/hash', [UserAdminController::class, 'hashShow'])->name('users.hash.show');
             });
         });
     });

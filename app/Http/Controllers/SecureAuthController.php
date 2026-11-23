@@ -3,88 +3,118 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Services\CredentialHasher;
+use App\Services\Audit;
+use App\Services\Credentials;
+use App\Services\LoginThrottle;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 class SecureAuthController extends Controller
 {
-    public function register(Request $request)
-    {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
-
-        $data = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'confirmed', PasswordPolicy::rule()],
-        ], PasswordPolicy::messages());
-
-        $salt = CredentialHasher::newSalt();
-
-        $user = User::create([
-            'name'           => $data['name'],
-            'email'          => $data['email'],
-            'salt'           => $salt,
-            'password'       => CredentialHasher::make($data['email'], $data['password'], $salt),
-            'crypto_version' => config('crypto.version'),
-            'role_level'     => 300,
-        ]);
-
-        Auth::login($user);
-        $request->session()->regenerate();
-
-        return redirect()->route('mask');
-    }
-
     public function login(Request $request)
     {
         $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
 
         $credentials = $request->validate([
-            'email'    => ['required', 'email'],
-            'password' => ['required', 'string'],
+            'email'    => ['required', 'email', 'max:255'],
+            'password' => ['required', 'string', 'max:1024'],
         ], PasswordPolicy::messages());
 
-        $key = 'login:' . $credentials['email'] . '|' . $request->ip();
+        $email = $credentials['email'];
+        $ip    = (string) $request->ip();
+        $user  = User::where('email', $email)->first();
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
-            $seconds = RateLimiter::availableIn($key);
+        // 1. ¿Bloqueo activo? (cuenta + IP, cuenta, o IP). Se consulta en MySQL.
+        if (($seconds = LoginThrottle::remaining($email, $ip)) > 0) {
+            Audit::log('login_blocked', Audit::DENIED, $user, $email, null, "Intento durante bloqueo activo ({$seconds} s restantes)");
 
-            return back()
-                ->withErrors(['email' => "Demasiados intentos. Intenta de nuevo en {$seconds} segundos."])
-                ->onlyInput('email');
+            return $this->locked($seconds);
         }
 
-        $user = User::where('email', $credentials['email'])->first();
+        // 2. Verificar con Hash::check (Argon2id) o con el esquema anterior (v1)
+        $valid = $user ? Credentials::check($user, $credentials['password']) : Credentials::burn($credentials['password']);
 
-        $valid = $user
-            ? CredentialHasher::check($credentials['email'], $credentials['password'], $user->salt, $user->password)
-            : CredentialHasher::burn($credentials['email'], $credentials['password']);
+        // Cuenta desactivada: misma respuesta que unas credenciales incorrectas
+        $inactive = $valid && ! $user->is_active;
+        if ($inactive) {
+            $valid = false;
+        }
 
         if (! $valid) {
-            RateLimiter::hit($key, 300);
+            $lock = LoginThrottle::fail($email, $ip, $user);
+            Audit::log('login', Audit::FAILURE, $user, $email, null, $inactive ? 'Cuenta desactivada' : 'Credenciales incorrectas');
+
+            if ($lock > 0) {
+                Audit::log('account_locked', Audit::DENIED, $user, $email, null, "Bloqueo temporal de {$lock} s por intentos fallidos");
+
+                return $this->locked($lock);
+            }
 
             return back()
-                ->withErrors(['email' => 'Credenciales incorrectas.'])
+                ->withErrors(['email' => 'Credenciales incorrectas. Te quedan ' . LoginThrottle::attemptsLeft($email, $ip) . ' intento(s).'])
                 ->onlyInput('email');
         }
 
-        RateLimiter::clear($key);
-        Auth::login($user, $request->boolean('remember'));
-        $request->session()->regenerate();
+        // 3. Correcto y sin bloqueo: reinicia el contador, migra a Argon2id si hace falta
+        LoginThrottle::succeed($email, $ip);
+
+        $upgraded = false;
+        if (Credentials::needsUpgrade($user)) {
+            Credentials::apply($user, $credentials['password']);
+            $user->save();
+            $upgraded = true;
+        }
+
+        Auth::login($user);                       // sin "recordarme": la sesión expira por inactividad
+        $request->session()->regenerate();        // nuevo identificador de sesión
+        Audit::log('login', Audit::SUCCESS, $user, null, null, $upgraded ? 'Hash actualizado a Argon2id' : null);
 
         return redirect()->route('mask');
     }
 
     public function logout(Request $request)
     {
+        Audit::log('logout', Audit::SUCCESS, Auth::user());
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * Una persona 300 o 499 pide que el administrador autorice su restablecimiento.
+     * La respuesta es siempre la misma, exista o no el correo.
+     */
+    public function requestReset(Request $request)
+    {
+        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+        ], PasswordPolicy::messages());
+
+        $user     = User::where('email', $data['email'])->first();
+        $eligible = $user && $user->is_active && (int) $user->role_level < 500;
+
+        if ($eligible) {
+            $user->forceFill(['temp_requested_at' => now()])->save();
+        }
+
+        Audit::log('temp_requested', $eligible ? Audit::SUCCESS : Audit::FAILURE, $eligible ? $user : null, $data['email'], null,
+            $eligible ? 'Solicitud enviada al administrador' : 'Correo inexistente, desactivado o nivel no elegible');
+
+        return back()->with('status', 'Si el correo pertenece a una cuenta de nivel 300 o 499, el administrador ya vio tu solicitud. Cuando la autorice recibirás un enlace de un solo uso para crear tu contraseña nueva.');
+    }
+
+    private function locked(int $seconds)
+    {
+        return back()
+            ->withErrors(['email' => 'Demasiados intentos fallidos. Intenta de nuevo en ' . ceil($seconds / 60) . ' min (' . $seconds . ' s).'])
+            ->with('lock_seconds', $seconds)
+            ->onlyInput('email');
     }
 }

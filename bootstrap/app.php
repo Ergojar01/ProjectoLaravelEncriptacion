@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role'   => \App\Http\Middleware\CheckRoleLevel::class,
             'framed' => \App\Http\Middleware\FramedOnly::class,
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
 
         // Cabeceras de seguridad en todas las respuestas web

@@ -14,6 +14,6 @@
         @yield('content')
     </div>
 </main>
-<script src="{{ asset('js/ui.js') }}" defer></script>
+<script src="{{ asset('js/ui.js') }}?v={{ filemtime(public_path('js/ui.js')) }}" defer></script>
 </body>
 </html>

@@ -37,3 +37,7 @@ Homestead.yaml
 .env
 .env
 .env.save
+
+# Respaldos reales (los de entrega ficticios van en database/backup/)
+/backups/*
+!/backups/.gitkeep

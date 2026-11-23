@@ -17,6 +17,7 @@ class User extends Authenticatable
         'salt',
         'crypto_version',
         'role_level',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -32,6 +33,12 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'role_level'        => 'integer',
+            'is_active'         => 'boolean',
+            'deactivated_at'    => 'datetime',
+            'must_change_password'     => 'boolean',
+            'temp_password_expires_at' => 'datetime',
+            'temp_password_used_at'    => 'datetime',
+            'temp_requested_at'        => 'datetime',
         ];
     }
 

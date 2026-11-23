@@ -1,6 +1,4 @@
 # docker-compose.yml
-version: '8.3.36-apache'
-
 services:
   app:
     build:
@@ -8,7 +6,8 @@ services:
       dockerfile: ./docker/php/Dockerfile
     container_name: laravel_roles_app
     ports:
-      - "127.0.0.1:80:80"
+      - "127.0.0.1:80:80"     # solo redirige a HTTPS
+      - "127.0.0.1:443:443"
     volumes:
       - .:/var/www/html
     depends_on:
@@ -24,24 +23,22 @@ services:
     environment:
       MYSQL_DATABASE: laravel_roles
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_USER: laravel_user
+      MYSQL_USER: ${DB_USERNAME:-laravel_user}
       MYSQL_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "127.0.0.1:3306:3306"
+    # SIN "ports": MySQL no se publica. Solo la app lo alcanza por la red interna de Docker.
     volumes:
       - dbdata:/var/lib/mysql
     networks:
       - laravel_network
 
-  # NUEVO SERVICIO: phpMyAdmin
+  # phpMyAdmin: herramienta de laboratorio, solo en localhost. Apágala con: docker compose stop phpmyadmin
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: laravel_roles_pma
     ports:
-      - "127.0.0.1:8081:80" # Puedes cambiar el 8080 si ese puerto ya está ocupado
+      - "127.0.0.1:8081:80"
     environment:
-      PMA_HOST: db # Debe coincidir con el nombre del servicio de MySQL
-
+      PMA_HOST: db
     depends_on:
       - db
     networks:

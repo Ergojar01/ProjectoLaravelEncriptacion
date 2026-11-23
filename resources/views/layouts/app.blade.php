@@ -20,10 +20,14 @@
             <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg> Mi perfil
         </a>
 
-        @if(auth()->user()->role_level >= 500)
+        @if(auth()->user()->role_level >= 499)
             <span class="nav-label">Capitanía</span>
+            @php($pend = auth()->user()->role_level >= 500 ? \App\Models\User::whereNotNull('temp_requested_at')->count() : 0)
             <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Tripulación @if($pend) <span class="badge b-you">{{ $pend }}</span> @endif
+            </a>
+            <a href="{{ route('admin.audit.index') }}" class="{{ request()->routeIs('admin.audit.*') ? 'active' : '' }}">
+                <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8zM14 3v5h5"/></svg> Bitácora
             </a>
         @endif
     </nav>
@@ -58,6 +62,6 @@
         @yield('content')
     </main>
 </div>
-<script src="{{ asset('js/ui.js') }}" defer></script>
+<script src="{{ asset('js/ui.js') }}?v={{ filemtime(public_path('js/ui.js')) }}" defer></script>
 </body>
 </html>

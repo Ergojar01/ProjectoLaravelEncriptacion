@@ -47,7 +47,7 @@
                     </div>
                 </div>
                 <ul class="rules" data-pass-rules="new_password">
-                    <li data-rule="len">Mínimo 9 caracteres</li>
+                    <li data-rule="len">Mínimo 12 caracteres</li>
                     <li data-rule="up">Una mayúscula</li>
                     <li data-rule="low">Una minúscula</li>
                     <li data-rule="num">Un número</li>
@@ -60,7 +60,7 @@
                 </div>
 
                 <button class="btn btn-primary">Guardar contraseña</button>
-                <p class="muted small note">Al guardar se genera una sal nueva de 256 bits y la contraseña se sella otra vez con PBKDF2-SHA512, XOR y HMAC.</p>
+                <p class="muted small note">Al guardar se genera un hash Argon2id nuevo (con sal aleatoria única) y se cierran tus otras sesiones abiertas.</p>
             </form>
         </div>
     </div>

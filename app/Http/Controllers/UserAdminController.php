@@ -23,33 +23,35 @@ class UserAdminController extends Controller
     public function index()
     {
         return view('admin.users', [
-            'users'          => User::orderBy('id')->get(),
+            'users' => User::orderBy('id')->get(),
             'currentVersion' => config('crypto.version'),
-            'canManage'      => Auth::user()->role_level >= 500,
+            'canManage' => Auth::user()->role_level === 500,
         ]);
     }
 
     public function store(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $data = $request->validate([
-            'name'       => ['required', 'string', 'max:255'],
-            'email'      => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
-            'password'   => ['required', 'confirmed', ...PasswordPolicy::rules($request->input('email'))],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'confirmed', ...PasswordPolicy::rules($request->input('email'))],
             'role_level' => ['required', Rule::in(self::ASSIGNABLE)],
         ], PasswordPolicy::messages());
 
         $created = new User([
-            'name'       => $data['name'],
-            'email'      => $data['email'],
+            'name' => $data['name'],
+            'email' => $data['email'],
             'role_level' => (int) $data['role_level'],
-            'is_active'  => true,
+            'is_active' => true,
         ]);
         Credentials::apply($created, $data['password']);
         $created->save();
 
-        Audit::log('user_created', Audit::SUCCESS, Auth::user(), $created->email, $created, 'Nivel asignado: ' . $created->role_level);
+        Audit::log('user_created', Audit::SUCCESS, Auth::user(), $created->email, $created, 'Nivel asignado: '.$created->role_level);
 
         return redirect()->route('admin.users.index')->with('status', 'Usuario registrado correctamente.');
     }
@@ -57,10 +59,14 @@ class UserAdminController extends Controller
     /** Modifica nombre y correo de otra persona (solo 500). */
     public function update(Request $request, User $user)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        abort_if($user->id === Auth::id(), 403);
+
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $data = $request->validate([
-            'name'  => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email:rfc', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
         ], PasswordPolicy::messages());
 
@@ -68,15 +74,15 @@ class UserAdminController extends Controller
 
         // Las cuentas con el esquema v1 usan el correo como parte del hash: primero deben migrar a Argon2id.
         if ($emailChanged && (int) $user->crypto_version < Credentials::VERSION) {
-            return back()->withInput()->withErrors(['email' => 'Esta cuenta aún usa el esquema anterior. Podrás cambiar su correo cuando la persona inicie sesión una vez.']);
+            return back()->withInput($request->only('name', 'email'))->withErrors(['email' => 'Esta cuenta aún usa el esquema anterior. Podrás cambiar su correo cuando la persona inicie sesión una vez.']);
         }
 
         $changes = [];
         if ($data['name'] !== $user->name) {
-            $changes[] = "nombre: {$user->name} → {$data['name']}";
+            $changes[] = 'nombre';
         }
         if ($emailChanged) {
-            $changes[] = "correo: {$user->email} → {$data['email']}";
+            $changes[] = 'correo';
         }
 
         $user->update(['name' => $data['name'], 'email' => $data['email']]);
@@ -125,8 +131,11 @@ class UserAdminController extends Controller
                 return back()->with('error', 'Debe quedar al menos un administrador activo.');
             }
 
-            $user->forceFill(['is_active' => false, 'deactivated_at' => now()])->save();
-            DB::table('sessions')->where('user_id', $user->id)->delete();
+            DB::transaction(function () use ($user): void {
+                $user->forceFill(['is_active' => false, 'deactivated_at' => now(), 'remember_token' => Str::random(60)])->save();
+                PasswordReset::where('user_id', $user->id)->whereNull('used_at')->where('expires_at', '>', now())->update(['expires_at' => now()]);
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+            });
             Audit::log('user_deactivated', Audit::SUCCESS, Auth::user(), $user->email, $user, 'Cuenta desactivada; sesiones cerradas');
 
             return back()->with('status', "Cuenta de {$user->name} desactivada.");
@@ -148,36 +157,56 @@ class UserAdminController extends Controller
             return back()->with('error', 'Solo se puede autorizar el restablecimiento de cuentas activas de nivel 300 y 499.');
         }
 
-        $ttl   = (int) config('security.reset.ttl_minutes');
+        $ttl = (int) config('security.reset.ttl_minutes');
         $token = bin2hex(random_bytes(32));
 
-        PasswordReset::where('user_id', $user->id)->whereNull('used_at')->where('expires_at', '>', now())->update(['expires_at' => now()]);
-        PasswordReset::create([
-            'user_id'    => $user->id,
-            'token_hash' => PasswordReset::hashToken($token),
-            'expires_at' => now()->addMinutes($ttl),
-            'created_by' => Auth::id(),
-            'created_at' => now(),
-        ]);
+        if (! config('security.reset.show_link') && in_array(config('mail.default'), ['log', 'array'], true)) {
+            Audit::log('reset_authorized', Audit::FAILURE, Auth::user(), target: $user, details: 'No hay un transporte de correo habilitado');
 
-        $user->forceFill(['temp_requested_at' => null])->save();
-        DB::table('sessions')->where('user_id', $user->id)->delete();
+            return back()->with('error', 'Configura un transporte de correo para enviar enlaces de recuperación.');
+        }
 
-        Audit::log('reset_authorized', Audit::SUCCESS, Auth::user(), $user->email, $user, "Enlace de un solo uso, vence en {$ttl} min");
+        $authorized = DB::transaction(function () use ($user, $token, $ttl) {
+            $user = User::whereKey($user->id)->lockForUpdate()->first();
+            if (! $user?->is_active || ! in_array($user->role_level, self::ASSIGNABLE, true)) {
+                return false;
+            }
 
-        $link = route('password.reset', ['token' => $token]);
+            PasswordReset::where('user_id', $user->id)->whereNull('used_at')->where('expires_at', '>', now())->update(['expires_at' => now()]);
+            PasswordReset::create([
+                'user_id' => $user->id,
+                'token_hash' => PasswordReset::hashToken($token),
+                'expires_at' => now()->addMinutes($ttl),
+                'created_by' => Auth::id(),
+                'created_at' => now(),
+            ]);
+            $user->forceFill(['temp_requested_at' => null])->save();
+            DB::table('sessions')->where('user_id', $user->id)->delete();
+
+            return true;
+        });
+        if (! $authorized) {
+            return back()->with('error', 'La cuenta ya no está habilitada para restablecimiento.');
+        }
+
+        $link = rtrim(config('app.url'), '/').route('password.reset', ['token' => $token], absolute: false);
 
         if (config('security.reset.show_link')) {
+            Audit::log('reset_authorized', Audit::SUCCESS, Auth::user(), $user->email, $user, "Enlace de un solo uso, vence en {$ttl} min");
+
             return back()->with('status', "Restablecimiento autorizado para {$user->name}.")->with('reset_link', $link)->with('reset_ttl', $ttl);
         }
 
         try {
             Mail::raw("Un administrador autorizó restablecer tu contraseña.\nCrea la nueva aquí (un solo uso, vence en {$ttl} minutos):\n{$link}", fn ($m) => $m->to($user->email)->subject('Restablecer contraseña'));
-        } catch (\Throwable $e) {
-            report($e);
+        } catch (\Throwable) {
+            PasswordReset::where('token_hash', PasswordReset::hashToken($token))->update(['expires_at' => now()]);
+            Audit::log('reset_authorized', Audit::FAILURE, Auth::user(), target: $user, details: 'Falló el transporte de correo');
 
             return back()->with('error', 'No se pudo enviar el correo. Revisa la configuración de MAIL_*.');
         }
+
+        Audit::log('reset_authorized', Audit::SUCCESS, Auth::user(), $user->email, $user, "Enlace de un solo uso, vence en {$ttl} min");
 
         return back()->with('status', "Enlace enviado por correo a {$user->name}.");
     }
@@ -192,7 +221,7 @@ class UserAdminController extends Controller
     {
         $request->validate(['admin_password' => ['required', 'string', 'max:1024']]);
 
-        $key = 'hashview:' . Auth::id();
+        $key = 'hashview:'.Auth::id();
         if (RateLimiter::tooManyAttempts($key, 5)) {
             Audit::log('hash_viewed', Audit::DENIED, Auth::user(), $user->email, $user, 'Demasiados intentos de confirmación');
 
@@ -207,10 +236,15 @@ class UserAdminController extends Controller
         }
 
         RateLimiter::clear($key);
-        Audit::log('hash_viewed', Audit::SUCCESS, Auth::user(), $user->email, $user, 'Consulta de solo lectura del hash almacenado');
+        $hash = $user->password;
+        $recognized = $user->crypto_version < Credentials::VERSION
+            ? strlen($hash) === 128 && ctype_xdigit($hash)
+            : password_get_info($hash)['algoName'] === 'argon2id';
+        abort_unless($recognized, 404);
+        abort_unless(Audit::log('hash_viewed', Audit::SUCCESS, Auth::user(), $user->email, $user), 503);
 
         return response()
-            ->view('admin.hash', ['target' => $user, 'hash' => $user->makeVisible('password')->password])
+            ->view('admin.hash', ['target' => $user, 'hash' => $hash])
             ->header('Cache-Control', 'no-store, private');
     }
 }

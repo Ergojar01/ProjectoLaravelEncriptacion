@@ -16,6 +16,7 @@ trait MakesUsers
             'crypto.pepper' => str_repeat('ab', 40),
             'crypto.iterations' => 1000,
             'security.password.check_pwned' => false,
+            'security.reset.show_link' => true,
             'hashing.argon.memory' => 1024, 'hashing.argon.time' => 1,
         ]);
     }

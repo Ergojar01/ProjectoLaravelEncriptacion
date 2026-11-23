@@ -1,17 +1,65 @@
 #!/usr/bin/env bash
-# Restaura un respaldo (.sql o .sql.enc) en la base de datos y comprueba que quedó bien.
-# Uso: ./scripts/restore_db.sh backups/archivo.sql.enc
 set -euo pipefail
-cd "$(dirname "$0")/.."
-FILE="${1:?Indica el archivo de respaldo}"
 
-env_get() { grep -E "^$1=" .env | head -1 | cut -d= -f2- | sed 's/[[:space:]]*#.*$//; s/^"//; s/"$//'; }
-ROOT_PASS="$(env_get DB_ROOT_PASSWORD)"; DB="$(env_get DB_DATABASE)"; export BACKUP_PASSPHRASE="$(env_get BACKUP_PASSPHRASE)"
+if [[ $# != 2 || ! "$2" =~ ^laravel_restore_[a-z0-9_]{1,40}$ || ! -f "$1" ]]; then
+    echo "Uso: bash scripts/restore_db.sh RESPALDO.sql.gpg laravel_restore_NOMBRE" >&2
+    exit 2
+fi
 
-read_dump() { case "$FILE" in *.enc) openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE -in "$FILE";; *) cat "$FILE";; esac; }
-SQL=(docker compose exec -T -e MYSQL_PWD="$ROOT_PASS" db mysql -uroot)
+archive=$1
+schema=$2
+grant_schema=${schema//_/\\_}
 
-"${SQL[@]}" -e "DROP DATABASE IF EXISTS \`$DB\`; CREATE DATABASE \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-read_dump | "${SQL[@]}" "$DB"
-echo "Restauración terminada. Usuarios en la base:"
-"${SQL[@]}" "$DB" -e "SELECT id, email, role_level, is_active FROM users;"
+mysql_as_root() {
+    docker compose exec -T db sh -ec '
+        export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"
+        exec mysql --protocol=socket -u root "$@"
+    ' sh "$@"
+}
+
+# CREATE sin IF NOT EXISTS impide importar encima de una base existente.
+mysql_as_root -e "CREATE DATABASE \`$schema\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+restore_user="restore_$(openssl rand -hex 8)"
+restore_password=$(openssl rand -hex 24)
+trap 'mysql_as_root -e "DROP USER IF EXISTS '\''$restore_user'\''@'\''localhost'\''" >/dev/null' EXIT
+mysql_as_root <<SQL
+CREATE USER '$restore_user'@'localhost' IDENTIFIED BY '$restore_password';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON \`$grant_schema\`.* TO '$restore_user'@'localhost';
+SQL
+{ printf '%s\n' "$restore_password"; gpg --decrypt -- "$archive"; } |
+    docker compose exec -T db sh -ec '
+        IFS= read -r MYSQL_PWD
+        export MYSQL_PWD
+        exec mysql --protocol=socket --binary-mode -u "$1" --database="$2"
+    ' sh "$restore_user" "$schema"
+unset restore_password
+
+violations=$(mysql_as_root --database="$schema" --batch --skip-column-names <<'SQL'
+SELECT
+    (SELECT COUNT(*) FROM users u LEFT JOIN roles r ON r.level = u.role_level WHERE r.level IS NULL)
+  + (SELECT COUNT(*) FROM sessions s LEFT JOIN users u ON u.id = s.user_id WHERE s.user_id IS NOT NULL AND u.id IS NULL)
+  + (SELECT COUNT(*) FROM password_resets p LEFT JOIN users u ON u.id = p.user_id WHERE u.id IS NULL)
+  + (SELECT COUNT(*) FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id WHERE a.user_id IS NOT NULL AND u.id IS NULL)
+  + (SELECT COUNT(*) FROM audit_logs a LEFT JOIN users u ON u.id = a.target_user_id WHERE a.target_user_id IS NOT NULL AND u.id IS NULL)
+  + (SELECT COUNT(*) FROM password_resets p LEFT JOIN users u ON u.id = p.created_by WHERE p.created_by IS NOT NULL AND u.id IS NULL)
+  + (SELECT COUNT(*) FROM login_attempts a LEFT JOIN users u ON u.id = a.user_id WHERE a.user_id IS NOT NULL AND u.id IS NULL)
+  + (SELECT COUNT(*) FROM account_locks l LEFT JOIN users u ON u.id = l.user_id WHERE l.user_id IS NOT NULL AND u.id IS NULL);
+SQL
+)
+if [[ "$violations" != 0 ]]; then
+    echo "La restauración contiene $violations referencias huérfanas." >&2
+    exit 1
+fi
+
+mysql_as_root --database="$schema" --table <<'SQL'
+SELECT
+    (SELECT COUNT(*) FROM users) AS users,
+    (SELECT COUNT(*) FROM roles) AS roles,
+    (SELECT COUNT(*) FROM login_attempts) AS login_attempts,
+    (SELECT COUNT(*) FROM account_locks) AS account_locks,
+    (SELECT COUNT(*) FROM password_resets) AS password_resets,
+    (SELECT COUNT(*) FROM audit_logs) AS audit_logs,
+    (SELECT COUNT(*) FROM sessions) AS sessions;
+SQL
+echo "Restauración verificada en $schema. Referencias huérfanas: 0."

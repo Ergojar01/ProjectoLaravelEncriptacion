@@ -98,11 +98,10 @@
                         @if($canManage)
                             <td class="right">
                                 <div class="row-actions">
-                                    <button class="btn btn-ghost btn-sm" type="button" data-open="modal-edit"
-                                            data-action="{{ route('admin.users.update', $u) }}"
-                                            data-name="{{ $u->name }}" data-email="{{ $u->email }}">Editar</button>
-
                                     @if($u->id !== auth()->id())
+                                        <button class="btn btn-ghost btn-sm" type="button" data-open="modal-edit"
+                                                data-action="{{ route('admin.users.update', $u) }}"
+                                                data-name="{{ $u->name }}" data-email="{{ $u->email }}">Editar</button>
                                         @if($u->role_level < 500 && $u->is_active)
                                             <form method="POST" action="{{ route('admin.users.reset', $u) }}" data-confirm="¿Autorizar el restablecimiento de {{ $u->name }}? Se cerrarán sus sesiones y se generará un enlace de un solo uso.">
                                                 @csrf

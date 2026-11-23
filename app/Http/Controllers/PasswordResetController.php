@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PasswordReset;
+use App\Models\User;
 use App\Services\Audit;
 use App\Services\Credentials;
 use App\Services\LoginThrottle;
@@ -21,17 +22,17 @@ class PasswordResetController extends Controller
     {
         $reset = PasswordReset::findValid($token);
 
-        if (! $reset) {
+        if (! $reset || ! $reset->user?->is_active || ! in_array($reset->user->role_level, [300, 499], true)) {
             Audit::log('password_reset', Audit::FAILURE, null, null, null, 'Enlace inválido, usado o vencido');
 
             return response()->view('auth.reset', ['valid' => false, 'token' => null, 'seconds' => 0], 410);
         }
 
         return view('auth.reset', [
-            'valid'   => true,
-            'token'   => $token,
+            'valid' => true,
+            'token' => $token,
             'seconds' => max(0, $reset->expires_at->getTimestamp() - now()->getTimestamp()),
-            'total'   => config('security.reset.ttl_minutes') * 60,
+            'total' => config('security.reset.ttl_minutes') * 60,
         ]);
     }
 
@@ -39,7 +40,7 @@ class PasswordResetController extends Controller
     {
         $reset = PasswordReset::findValid($token);
 
-        if (! $reset) {
+        if (! $reset || ! $reset->user?->is_active || ! in_array($reset->user->role_level, [300, 499], true)) {
             Audit::log('password_reset', Audit::FAILURE, null, null, null, 'Enlace inválido, usado o vencido');
 
             return response()->view('auth.reset', ['valid' => false, 'token' => null, 'seconds' => 0], 410);
@@ -52,19 +53,24 @@ class PasswordResetController extends Controller
         ], PasswordPolicy::messages());
 
         $done = DB::transaction(function () use ($reset, $user, $request) {
-            // Un solo uso: solo gana quien marque used_at primero
-            $claimed = PasswordReset::where('id', $reset->id)->whereNull('used_at')->update(['used_at' => now()]);
+            $user = User::whereKey($user->id)->lockForUpdate()->first();
+            if (! $user?->is_active || ! in_array($user->role_level, [300, 499], true)) {
+                return false;
+            }
+
+            $claimed = PasswordReset::whereKey($reset->id)->whereNull('used_at')
+                ->where('expires_at', '>', now())->update(['used_at' => now()]);
             if ($claimed !== 1) {
                 return false;
             }
 
             Credentials::apply($user, $request->input('password'));
             $user->forceFill([
-                'must_change_password'     => false,
+                'must_change_password' => false,
                 'temp_password_expires_at' => null,
-                'temp_password_used_at'    => null,
-                'temp_requested_at'        => null,
-                'remember_token'           => Str::random(60),
+                'temp_password_used_at' => null,
+                'temp_requested_at' => null,
+                'remember_token' => Str::random(60),
             ])->save();
 
             DB::table('sessions')->where('user_id', $user->id)->delete();   // invalida todas las sesiones
@@ -74,6 +80,8 @@ class PasswordResetController extends Controller
         });
 
         if (! $done) {
+            Audit::log('password_reset', Audit::FAILURE, $user, details: 'Enlace inválido, usado o vencido');
+
             return response()->view('auth.reset', ['valid' => false, 'token' => null, 'seconds' => 0], 410);
         }
 

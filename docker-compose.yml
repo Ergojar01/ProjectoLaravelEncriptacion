@@ -1,52 +1,55 @@
-# docker-compose.yml
 services:
   app:
     build:
       context: .
-      dockerfile: ./docker/php/Dockerfile
-    container_name: laravel_roles_app
+      dockerfile: docker/php/Dockerfile
     ports:
-      - "127.0.0.1:80:80"     # solo redirige a HTTPS
+      - "127.0.0.1:80:80"
       - "127.0.0.1:443:443"
+    env_file: .env
+    environment:
+      APP_DEBUG: "false"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_DATABASE: laravel_roles
+      DB_USERNAME: laravel_user
+      DB_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD en el .env del proyecto}
     volumes:
       - .:/var/www/html
+      - app_storage:/var/www/html/storage
+      - app_cache:/var/www/html/bootstrap/cache
     depends_on:
-      - db
-    networks:
-      - laravel_network
-    command: bash -c "npm install && npm run build && apache2-foreground"
+      db:
+        condition: service_healthy
+    networks: [frontend, database]
+    command: apache2-foreground
 
   db:
-    image: mysql:8.0
-    container_name: laravel_roles_db
+    build:
+      context: .
+      dockerfile: docker/mysql/Dockerfile
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: laravel_roles
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_USER: ${DB_USERNAME:-laravel_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    # SIN "ports": MySQL no se publica. Solo la app lo alcanza por la red interna de Docker.
+      MYSQL_ROOT_HOST: localhost
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Configura DB_ROOT_PASSWORD en el archivo privado mysql.env de Compose}
+      LARAVEL_DB_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD en el .env del proyecto}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?Configura DB_MIGRATION_PASSWORD en el archivo privado mysql.env de Compose}
     volumes:
       - dbdata:/var/lib/mysql
-    networks:
-      - laravel_network
-
-  # phpMyAdmin: herramienta de laboratorio, solo en localhost. Apágala con: docker compose stop phpmyadmin
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: laravel_roles_pma
-    ports:
-      - "127.0.0.1:8081:80"
-    environment:
-      PMA_HOST: db
-    depends_on:
-      - db
-    networks:
-      - laravel_network
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
 networks:
-  laravel_network:
-    driver: bridge
+  frontend:
+  database:
+    internal: true
 
 volumes:
   dbdata:
+  app_storage:
+  app_cache:

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -26,19 +27,24 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(fn (User $user) => $user->username ??= 'user-'.Str::uuid());
+    }
+
     // IMPORTANTE: sin 'password' => 'hashed'. Si lo agregas, Laravel aplica bcrypt
     // encima de nuestro hash y el login nunca coincide.
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'role_level'        => 'integer',
-            'is_active'         => 'boolean',
-            'deactivated_at'    => 'datetime',
-            'must_change_password'     => 'boolean',
+            'role_level' => 'integer',
+            'is_active' => 'boolean',
+            'deactivated_at' => 'datetime',
+            'must_change_password' => 'boolean',
             'temp_password_expires_at' => 'datetime',
-            'temp_password_used_at'    => 'datetime',
-            'temp_requested_at'        => 'datetime',
+            'temp_password_used_at' => 'datetime',
+            'temp_requested_at' => 'datetime',
         ];
     }
 
@@ -47,7 +53,7 @@ class User extends Authenticatable
         return match (true) {
             $this->role_level >= 500 => 'Administrador',
             $this->role_level >= 499 => 'Visualizador',
-            default                  => 'Usuario básico',
+            default => 'Usuario básico',
         };
     }
 
@@ -56,7 +62,7 @@ class User extends Authenticatable
         return match (true) {
             $this->role_level >= 500 => 'b-500',
             $this->role_level >= 499 => 'b-499',
-            default                  => 'b-300',
+            default => 'b-300',
         };
     }
 

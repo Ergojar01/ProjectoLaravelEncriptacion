@@ -23,8 +23,6 @@ final class Credentials
 {
     public const VERSION = 2;
 
-    private static ?string $dummy = null;
-
     /** Hash Argon2id listo para guardar. */
     public static function make(string $password): string
     {
@@ -39,14 +37,14 @@ final class Credentials
                 && CredentialHasher::check($user->email, $password, $user->salt, $user->password);
         }
 
-        return Hash::check(self::prepare($password), $user->password);
+        // El Argon2id de la revisión anterior guardaba una sal auxiliar y no usaba pimienta.
+        return Hash::check($user->salt === null ? self::prepare($password) : $password, $user->password);
     }
 
     /** Gasta el mismo tiempo cuando el usuario no existe (evita enumeración por tiempos). */
     public static function burn(string $password): bool
     {
-        self::$dummy ??= Hash::make('dummy-password-for-timing');
-        Hash::check(self::prepare($password), self::$dummy);
+        Hash::make(self::prepare($password));
 
         return false;
     }
@@ -54,6 +52,7 @@ final class Credentials
     public static function needsUpgrade(User $user): bool
     {
         return (int) $user->crypto_version < self::VERSION
+            || $user->salt !== null
             || Hash::needsRehash($user->password);
     }
 
@@ -61,8 +60,8 @@ final class Credentials
     public static function apply(User $user, string $password): void
     {
         $user->forceFill([
-            'password'       => self::make($password),
-            'salt'           => null,
+            'password' => self::make($password),
+            'salt' => null,
             'crypto_version' => self::VERSION,
         ]);
     }

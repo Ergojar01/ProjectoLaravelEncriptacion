@@ -20,7 +20,7 @@ Route::get('/', function () {
 
 // 2. Portal: la única URL visible (/Dashboard). Todo lo demás vive dentro del iframe
 //    y cada solicitud se valida igualmente en el servidor (auth + active + role).
-Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware(['auth', 'active']);
+Route::get('/Dashboard', fn () => view('mask'))->name('mask')->middleware(['auth', 'active', 'auth.session']);
 
 Route::middleware('guest')->group(function () {
     Route::post('/acceder', [SecureAuthController::class, 'login'])->name('login.store');
@@ -32,7 +32,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/restablecer/{token}', [PasswordResetController::class, 'update'])->middleware('throttle:10,10')->name('password.reset.store');
 });
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'auth.session'])->group(function () {
     Route::post('/salir', [SecureAuthController::class, 'logout'])->name('logout');
 
     // Pantallas internas: solo se muestran dentro del portal ('framed')
@@ -42,24 +42,23 @@ Route::middleware(['auth', 'active'])->group(function () {
         // Perfil: cualquier nivel cambia SU contraseña
         Route::get('/perfil', [ProfileController::class, 'edit'])->name('profile.edit');
         Route::put('/perfil/clave', [ProfileController::class, 'updatePassword'])->name('profile.password');
+    });
 
-        Route::prefix('admin')->name('admin.')->group(function () {
-            // 499 y 500: consulta
-            Route::middleware('role:499')->group(function () {
-                Route::get('/usuarios', [UserAdminController::class, 'index'])->name('users.index');
-                Route::get('/auditoria', [AuditController::class, 'index'])->name('audit.index');
-            });
-
-            // Solo 500: administración
-            Route::middleware('role:500')->group(function () {
-                Route::post('/usuarios', [UserAdminController::class, 'store'])->name('users.store');
-                Route::patch('/usuarios/{user}', [UserAdminController::class, 'update'])->name('users.update');
-                Route::patch('/usuarios/{user}/nivel', [UserAdminController::class, 'updateLevel'])->name('users.level');
-                Route::patch('/usuarios/{user}/estado', [UserAdminController::class, 'toggleStatus'])->name('users.status');
-                Route::post('/usuarios/{user}/restablecer', [UserAdminController::class, 'authorizeReset'])->name('users.reset');
-                Route::get('/usuarios/{user}/hash', [UserAdminController::class, 'hashForm'])->name('users.hash.form');
-                Route::post('/usuarios/{user}/hash', [UserAdminController::class, 'hashShow'])->name('users.hash.show');
-            });
+    Route::prefix('admin')->name('admin.')->group(function () {
+        // 499 y 500: consulta
+        Route::middleware(['role:499', 'framed'])->group(function () {
+            Route::get('/usuarios', [UserAdminController::class, 'index'])->name('users.index');
+            Route::get('/auditoria', [AuditController::class, 'index'])->name('audit.index');
+        });
+        // Solo 500: administración
+        Route::middleware('role:500')->group(function () {
+            Route::post('/usuarios', [UserAdminController::class, 'store'])->name('users.store');
+            Route::patch('/usuarios/{user}', [UserAdminController::class, 'update'])->name('users.update');
+            Route::patch('/usuarios/{user}/nivel', [UserAdminController::class, 'updateLevel'])->name('users.level');
+            Route::patch('/usuarios/{user}/estado', [UserAdminController::class, 'toggleStatus'])->name('users.status');
+            Route::post('/usuarios/{user}/restablecer', [UserAdminController::class, 'authorizeReset'])->name('users.reset');
+            Route::get('/usuarios/{user}/hash', [UserAdminController::class, 'hashForm'])->middleware('framed')->name('users.hash.form');
+            Route::post('/usuarios/{user}/hash', [UserAdminController::class, 'hashShow'])->name('users.hash.show');
         });
     });
 });

@@ -15,7 +15,7 @@ class SecurityHeaders
         // El portal usa un iframe del mismo origen; ningún otro sitio puede incrustarnos.
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('Referrer-Policy', 'same-origin');
+        $response->headers->set('Referrer-Policy', 'no-referrer');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
         $response->headers->set('Content-Security-Policy', implode('; ', [
             "default-src 'self'",
@@ -34,7 +34,7 @@ class SecurityHeaders
         }
 
         // Páginas de una sesión: que el navegador no las guarde (el botón "atrás" tras cerrar sesión no las muestra)
-        if ($request->user()) {
+        if ($request->user() || $request->routeIs('password.reset', 'password.reset.store')) {
             $response->headers->set('Cache-Control', 'no-store, private');
         }
 

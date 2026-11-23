@@ -1,5 +1,5 @@
 # docker/php/Dockerfile
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 RUN apt-get update && apt-get install -y \
     libzip-dev zip unzip git curl openssl \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-install pdo_mysql zip
 
 # Módulos de Apache: rutas de Laravel, HTTPS y cabeceras
-RUN a2enmod rewrite ssl headers
+RUN a2enmod rewrite ssl headers setenvif
 
 # Ocultar versión de Apache/PHP
 RUN echo "ServerTokens Prod\nServerSignature Off" > /etc/apache2/conf-available/hardening.conf && a2enconf hardening \
@@ -26,7 +26,5 @@ RUN a2ensite default-ssl
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-RUN chown -R www-data:www-data /var/www/html
-
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache

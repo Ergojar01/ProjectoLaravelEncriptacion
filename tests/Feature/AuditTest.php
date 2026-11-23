@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 class AuditTest extends TestCase
 {
-    use RefreshDatabase, MakesUsers;
+    use MakesUsers, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -56,10 +56,11 @@ class AuditTest extends TestCase
     public function test_499_y_500_ven_la_bitacora_con_filtros(): void
     {
         $viewer = $this->makeUser(499, 'v@test.com');
-        $admin  = $this->makeUser(500, 'adm@test.com');
+        $admin = $this->makeUser(500, 'adm@test.com');
         $this->post('/acceder', ['email' => 'zzz@test.com', 'password' => 'x']);
 
         $this->actingAs($viewer)->get('/admin/auditoria')->assertOk()->assertSee('zzz@test.com');
+        $this->flushSession();
         $this->actingAs($admin)->get('/admin/auditoria?event=login&result=failure&q=zzz')->assertOk()->assertSee('zzz@test.com');
         $this->actingAs($admin)->get('/admin/auditoria?event=login&result=success')->assertOk()->assertDontSee('zzz@test.com');
         $this->actingAs($admin)->get('/admin/auditoria?event=inventado')->assertSessionHasErrors('event');
@@ -68,7 +69,7 @@ class AuditTest extends TestCase
     public function test_acciones_de_admin_y_cambio_de_clave_se_registran_sin_contrasenas(): void
     {
         $admin = $this->makeUser(500, 'root@test.com');
-        $new   = 'Zx9!kLm2#pQrWv';
+        $new = 'Zx9!kLm2#pQrWv';
 
         $this->actingAs($admin)->post('/admin/usuarios', [
             'name' => 'Nuevo', 'email' => 'nuevo@test.com', 'password' => $new, 'password_confirmation' => $new, 'role_level' => 300,

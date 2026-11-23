@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PasswordReset;
 use App\Services\Audit;
 use App\Services\Credentials;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -26,7 +28,7 @@ class ProfileController extends Controller
     public function updatePassword(Request $request): RedirectResponse
     {
         $user = $request->user();
-        $key  = 'pwchange:' . $user->id . '|' . $request->ip();
+        $key = 'pwchange:'.$user->id.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
@@ -37,7 +39,7 @@ class ProfileController extends Controller
 
         $data = $request->validate([
             'current_password' => ['required', 'string', 'max:1024'],
-            'password'         => ['required', 'confirmed', 'different:current_password', ...PasswordPolicy::rules($user->email)],
+            'password' => ['required', 'confirmed', 'different:current_password', ...PasswordPolicy::rules($user->email)],
         ], PasswordPolicy::messages());
 
         if (! Credentials::check($user, $data['current_password'])) {
@@ -47,14 +49,28 @@ class ProfileController extends Controller
             return back()->withErrors(['current_password' => 'La contraseña actual no es correcta.']);
         }
 
+        $oldHash = $user->password;
         Credentials::apply($user, $data['password']);
-        $user->forceFill(['remember_token' => Str::random(60)])->save();
+        $user->forceFill(['remember_token' => Str::random(60)]);
+        $updated = DB::transaction(function () use ($user, $oldHash) {
+            $updated = $user->newQuery()->whereKey($user->id)->where('password', $oldHash)
+                ->where('is_active', true)->update($user->getDirty());
+            if ($updated) {
+                PasswordReset::where('user_id', $user->id)->whereNull('used_at')->where('expires_at', '>', now())->update(['expires_at' => now()]);
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+            }
+
+            return $updated;
+        });
+        if (! $updated) {
+            Audit::log('password_changed', Audit::FAILURE, $user, details: 'La credencial cambió durante la solicitud');
+
+            return back()->withErrors(['current_password' => 'La credencial cambió. Vuelve a iniciar sesión.']);
+        }
 
         RateLimiter::clear($key);
-        $request->session()->regenerate();
-
-        // Invalida todas las demás sesiones de esta cuenta (otros navegadores o equipos)
-        DB::table('sessions')->where('user_id', $user->id)->where('id', '!=', $request->session()->getId())->delete();
+        $request->session()->regenerate(true);
+        $request->session()->put('password_hash_'.Auth::getDefaultDriver(), Auth::guard()->hashPasswordForCookie($user->password));
 
         Audit::log('password_changed', Audit::SUCCESS, $user, null, null, 'Cambio voluntario de contraseña; otras sesiones invalidadas');
 

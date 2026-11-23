@@ -7,24 +7,40 @@ use App\Services\Audit;
 use App\Services\Credentials;
 use App\Services\LoginThrottle;
 use App\Support\PasswordPolicy;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class SecureAuthController extends Controller
 {
     public function login(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $credentials = $request->validate([
-            'email'    => ['required', 'email', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'max:1024'],
         ], PasswordPolicy::messages());
 
         $email = $credentials['email'];
-        $ip    = (string) $request->ip();
-        $user  = User::where('email', $email)->first();
+        $ip = (string) $request->ip();
+
+        try {
+            return Cache::lock('login-account:'.hash('sha256', $email), 60)->block(5,
+                fn () => Cache::lock('login-ip:'.hash('sha256', $ip), 60)->block(5,
+                    fn () => $this->authenticate($request, $email, $ip, $credentials['password'])));
+        } catch (LockTimeoutException) {
+            return $this->locked(1);
+        }
+    }
+
+    private function authenticate(Request $request, string $email, string $ip, #[\SensitiveParameter] string $password)
+    {
+        $user = User::where('email', $email)->first();
 
         // 1. ¿Bloqueo activo? (cuenta + IP, cuenta, o IP). Se consulta en MySQL.
         if (($seconds = LoginThrottle::remaining($email, $ip)) > 0) {
@@ -34,7 +50,7 @@ class SecureAuthController extends Controller
         }
 
         // 2. Verificar con Hash::check (Argon2id) o con el esquema anterior (v1)
-        $valid = $user ? Credentials::check($user, $credentials['password']) : Credentials::burn($credentials['password']);
+        $valid = $user ? Credentials::check($user, $password) : Credentials::burn($password);
 
         // Cuenta desactivada: misma respuesta que unas credenciales incorrectas
         $inactive = $valid && ! $user->is_active;
@@ -53,7 +69,7 @@ class SecureAuthController extends Controller
             }
 
             return back()
-                ->withErrors(['email' => 'Credenciales incorrectas. Te quedan ' . LoginThrottle::attemptsLeft($email, $ip) . ' intento(s).'])
+                ->withErrors(['email' => 'Credenciales incorrectas. Te quedan '.LoginThrottle::attemptsLeft($email, $ip).' intento(s).'])
                 ->onlyInput('email');
         }
 
@@ -62,13 +78,19 @@ class SecureAuthController extends Controller
 
         $upgraded = false;
         if (Credentials::needsUpgrade($user)) {
-            Credentials::apply($user, $credentials['password']);
-            $user->save();
+            $previousHash = $user->password;
+            Credentials::apply($user, $password);
+            if (! User::whereKey($user->id)->where('password', $previousHash)->where('is_active', true)->update($user->getDirty())) {
+                Audit::log('login', Audit::FAILURE, $user, details: 'La credencial cambió durante la solicitud');
+
+                return back()->withErrors(['email' => 'Credenciales incorrectas.'])->onlyInput('email');
+            }
             $upgraded = true;
         }
 
         Auth::login($user);                       // sin "recordarme": la sesión expira por inactividad
-        $request->session()->regenerate();        // nuevo identificador de sesión
+        $request->session()->regenerate(true);
+        $request->session()->put('password_hash_'.Auth::getDefaultDriver(), Auth::guard()->hashPasswordForCookie($user->password));
         Audit::log('login', Audit::SUCCESS, $user, null, null, $upgraded ? 'Hash actualizado a Argon2id' : null);
 
         return redirect()->route('mask');
@@ -91,13 +113,15 @@ class SecureAuthController extends Controller
      */
     public function requestReset(Request $request)
     {
-        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
 
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
         ], PasswordPolicy::messages());
 
-        $user     = User::where('email', $data['email'])->first();
+        $user = User::where('email', $data['email'])->first();
         $eligible = $user && $user->is_active && (int) $user->role_level < 500;
 
         if ($eligible) {
@@ -113,7 +137,7 @@ class SecureAuthController extends Controller
     private function locked(int $seconds)
     {
         return back()
-            ->withErrors(['email' => 'Demasiados intentos fallidos. Intenta de nuevo en ' . ceil($seconds / 60) . ' min (' . $seconds . ' s).'])
+            ->withErrors(['email' => 'Demasiados intentos fallidos. Intenta de nuevo en '.ceil($seconds / 60).' min ('.$seconds.' s).'])
             ->with('lock_seconds', $seconds)
             ->onlyInput('email');
     }

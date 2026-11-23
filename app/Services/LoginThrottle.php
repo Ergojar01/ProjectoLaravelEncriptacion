@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AccountLock;
 use App\Models\LoginAttempt;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -33,8 +34,8 @@ final class LoginThrottle
             ->where('locked_until', '>', now())
             ->where(function ($q) use ($email, $ip) {
                 $q->where(fn ($w) => $w->where('scope', 'pair')->where('identifier', $email)->where('ip_address', $ip))
-                  ->orWhere(fn ($w) => $w->where('scope', 'account')->where('identifier', $email))
-                  ->orWhere(fn ($w) => $w->where('scope', 'ip')->where('ip_address', $ip));
+                    ->orWhere(fn ($w) => $w->where('scope', 'account')->where('identifier', $email))
+                    ->orWhere(fn ($w) => $w->where('scope', 'ip')->where('ip_address', $ip));
             })
             ->max('locked_until');
 
@@ -42,7 +43,7 @@ final class LoginThrottle
             return 0;
         }
 
-        return max(0, \Illuminate\Support\Carbon::parse($until, 'UTC')->getTimestamp() - now()->getTimestamp());
+        return max(0, Carbon::parse($until, 'UTC')->getTimestamp() - now()->getTimestamp());
     }
 
     /**
@@ -50,32 +51,28 @@ final class LoginThrottle
      */
     public static function fail(string $email, string $ip, ?User $user = null): int
     {
-        $email  = self::normalize($email);
-        $cfg    = config('security.login');
+        $email = self::normalize($email);
+        $cfg = config('security.login');
         $window = now()->subSeconds($cfg['window_seconds']);
 
         LoginAttempt::create(['user_id' => $user?->id, 'identifier' => $email, 'ip_address' => $ip, 'created_at' => now()]);
 
         $pair = fn () => LoginAttempt::where('identifier', $email)->where('ip_address', $ip)->whereNull('cleared_at')->where('created_at', '>=', $window);
 
+        $account = LoginAttempt::where('identifier', $email)->where('created_at', '>=', $window);
+        if ($account->count() >= $cfg['account_max']) {
+            return self::lock('account', $email, null, $user, 'Ataque distribuido contra la cuenta');
+        }
+
+        $origin = LoginAttempt::where('ip_address', $ip)->where('created_at', '>=', $window);
+        if ($origin->count() >= $cfg['ip_max']) {
+            return self::lock('ip', null, $ip, null, 'Demasiados fallos desde un mismo origen');
+        }
+
         if ($pair()->count() >= $cfg['max_attempts']) {
             $pair()->update(['cleared_at' => now()]);
 
             return self::lock('pair', $email, $ip, $user, 'Intentos fallidos desde un mismo origen');
-        }
-
-        $account = fn () => LoginAttempt::where('identifier', $email)->whereNull('cleared_at')->where('created_at', '>=', $window);
-        if ($account()->count() >= $cfg['account_max']) {
-            $account()->update(['cleared_at' => now()]);
-
-            return self::lock('account', $email, null, $user, 'Ataque distribuido contra la cuenta');
-        }
-
-        $origin = fn () => LoginAttempt::where('ip_address', $ip)->whereNull('cleared_at')->where('created_at', '>=', $window);
-        if ($origin()->count() >= $cfg['ip_max']) {
-            $origin()->update(['cleared_at' => now()]);
-
-            return self::lock('ip', null, $ip, null, 'Demasiados fallos desde un mismo origen');
         }
 
         return 0;
@@ -84,7 +81,7 @@ final class LoginThrottle
     /** Intentos que le quedan a esta cuenta + IP antes del bloqueo. */
     public static function attemptsLeft(string $email, string $ip): int
     {
-        $cfg  = config('security.login');
+        $cfg = config('security.login');
         $used = LoginAttempt::where('identifier', self::normalize($email))->where('ip_address', $ip)
             ->whereNull('cleared_at')->where('created_at', '>=', now()->subSeconds($cfg['window_seconds']))->count();
 
@@ -112,13 +109,13 @@ final class LoginThrottle
         $seconds = (int) config('security.login.lock_seconds');
 
         AccountLock::create([
-            'user_id'      => $user?->id,
-            'scope'        => $scope,
-            'identifier'   => $email,
-            'ip_address'   => $ip,
-            'reason'       => $reason,
+            'user_id' => $user?->id,
+            'scope' => $scope,
+            'identifier' => $email,
+            'ip_address' => $ip,
+            'reason' => $reason,
             'locked_until' => now()->addSeconds($seconds),
-            'created_at'   => now(),
+            'created_at' => now(),
         ]);
 
         return $seconds;

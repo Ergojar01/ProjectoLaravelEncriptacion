@@ -7,16 +7,18 @@ use App\Models\AuditLog;
 use App\Models\LoginAttempt;
 use App\Models\PasswordReset;
 use App\Models\User;
+use App\Services\Credentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Tests\Concerns\MakesUsers;
 use Tests\TestCase;
 
 /** Las pruebas obligatorias del PDF (sección 10) y los controles asociados. */
 class SecurityTest extends TestCase
 {
-    use RefreshDatabase, MakesUsers;
+    use MakesUsers, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -56,12 +58,27 @@ class SecurityTest extends TestCase
     }
 
     // --- 1. Contraseña incorrecta ---------------------------------------------
+    public function test_previous_argon2id_credentials_upgrade_after_login(): void
+    {
+        $user = $this->makeUser(300, 'legacy-argon@haki.test');
+        $original = Hash::make(self::PASS);
+        $user->forceFill(['password' => $original, 'salt' => str_repeat('a', 64)])->save();
+
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => self::PASS])
+            ->assertRedirect(route('mask'));
+
+        $updated = $user->fresh();
+        $this->assertNull($updated->salt);
+        $this->assertNotSame($original, $updated->password);
+        $this->assertTrue(Credentials::check($updated, self::PASS));
+    }
+
     public function test_contrasena_incorrecta_es_rechazada_con_mensaje_generico(): void
     {
         $this->makeUser(300, 'a@test.com');
 
-        $existe    = $this->post('/acceder', ['email' => 'a@test.com', 'password' => 'mala']);
-        $noExiste  = $this->post('/acceder', ['email' => 'nadie@test.com', 'password' => 'mala']);
+        $existe = $this->post('/acceder', ['email' => 'a@test.com', 'password' => 'mala']);
+        $noExiste = $this->post('/acceder', ['email' => 'nadie@test.com', 'password' => 'mala']);
 
         $existe->assertSessionHasErrors('email');
         $this->assertGuest();
@@ -135,17 +152,18 @@ class SecurityTest extends TestCase
     // --- 5, 6, 7. Autorización ------------------------------------------------
     public function test_300_no_entra_a_administracion_499_no_crea_y_300_no_toca_a_otros(): void
     {
-        $basic  = $this->makeUser(300, 'b@test.com');
+        $basic = $this->makeUser(300, 'b@test.com');
         $viewer = $this->makeUser(499, 'v@test.com');
-        $other  = $this->makeUser(300, 'o@test.com');
+        $other = $this->makeUser(300, 'o@test.com');
 
-        $this->actingAs($basic)->get('/admin/usuarios')->assertForbidden();
+        $this->actingAs($basic)->get('/admin/usuarios', ['Sec-Fetch-Dest' => 'document'])->assertForbidden();
         $this->actingAs($basic)->get('/admin/auditoria')->assertForbidden();
         $this->actingAs($basic)->patch("/admin/usuarios/{$other->id}/nivel", ['role_level' => 499])->assertForbidden();
         $this->actingAs($basic)->patch("/admin/usuarios/{$other->id}/estado")->assertForbidden();
         $this->actingAs($basic)->post("/admin/usuarios/{$other->id}/restablecer")->assertForbidden();
         $this->actingAs($basic)->get("/admin/usuarios/{$other->id}/hash")->assertForbidden();
 
+        $this->flushSession();
         $this->actingAs($viewer)->post('/admin/usuarios', ['name' => 'X', 'email' => 'x@test.com', 'password' => 'Zx9!kLm2#pQrWv', 'password_confirmation' => 'Zx9!kLm2#pQrWv', 'role_level' => 300])->assertForbidden();
         $this->actingAs($viewer)->patch("/admin/usuarios/{$other->id}", ['name' => 'H', 'email' => 'h@test.com'])->assertForbidden();
         $this->actingAs($viewer)->get("/admin/usuarios/{$other->id}/hash")->assertForbidden();
@@ -157,7 +175,7 @@ class SecurityTest extends TestCase
     public function test_499_ve_usuarios_y_estados_pero_nunca_hashes(): void
     {
         $viewer = $this->makeUser(499, 'v@test.com');
-        $u      = $this->makeUser(300, 'o@test.com');
+        $u = $this->makeUser(300, 'o@test.com');
 
         $this->actingAs($viewer)->get('/admin/usuarios')->assertOk()->assertSee('o@test.com')->assertDontSee(substr($u->password, 0, 20));
     }
@@ -175,7 +193,7 @@ class SecurityTest extends TestCase
     public function test_html_y_javascript_se_escapan(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $evil  = '<script>alert(1)</script>';
+        $evil = '<script>alert(1)</script>';
         $this->actingAs($admin)->post('/admin/usuarios', ['name' => $evil, 'email' => 'e@test.com', 'password' => 'Zx9!kLm2#pQrWv', 'password_confirmation' => 'Zx9!kLm2#pQrWv', 'role_level' => 300]);
 
         $this->actingAs($admin)->get('/admin/usuarios')->assertOk()->assertDontSee($evil, false)->assertSee('&lt;script&gt;', false);
@@ -187,25 +205,32 @@ class SecurityTest extends TestCase
         $admin = $this->makeUser(500, 'adm@test.com');
         $this->app['env'] = 'production';           // en 'testing' Laravel desactiva el CSRF
 
-        $this->actingAs($admin)->post('/admin/usuarios', ['name' => 'X', 'email' => 'x@test.com'])->assertStatus(419);
+        $this->actingAs($admin)->post('/admin/usuarios', ['name' => 'X', 'email' => 'x@test.com'], ['Sec-Fetch-Site' => 'same-origin'])->assertStatus(419);
         $this->post('/acceder', ['email' => 'a@test.com', 'password' => 'x'])->assertStatus(419);
     }
 
     // --- 11. Sesión -----------------------------------------------------------
     public function test_cerrar_sesion_invalida_la_sesion(): void
     {
-        $u = $this->makeUser(300, 'a@test.com');
-        $this->post('/acceder', ['email' => 'a@test.com', 'password' => self::PASS]);
-        $old = session()->getId();
+        config(['session.driver' => 'database', 'session.encrypt' => true]);
+        $user = $this->makeUser(300, 'a@test.com');
+        $cookie = config('session.cookie');
+        $old = $this->post('/acceder', ['email' => $user->email, 'password' => self::PASS])
+            ->assertRedirect(route('mask'))->getCookie($cookie)->getValue();
+        $csrf = session()->token();
+        $this->assertDatabaseHas('sessions', ['id' => $old, 'user_id' => $user->id]);
 
-        $this->post('/salir');
-
+        $this->withCookie($cookie, $old)->post('/salir')->assertRedirect(route('login'));
         $this->assertGuest();
-        $this->assertNotSame($old, session()->getId());
-        $this->get('/Dashboard')->assertRedirect(route('login'));
+        $this->assertNotSame($csrf, session()->token());
+        $this->assertDatabaseMissing('sessions', ['id' => $old]);
+
+        $this->app['auth']->forgetGuards();
+        $this->app['session']->forgetDrivers();
+        $this->app->forgetInstance('session.store');
+        $this->withCookie($cookie, $old)->get('/Dashboard')->assertRedirect(route('login'));
     }
 
-    // --- 12. Cambio de contraseña ---------------------------------------------
     public function test_cambio_de_clave_exige_12_y_actual_actualiza_hash_e_invalida_otras_sesiones(): void
     {
         $u = $this->makeUser(300, 'a@test.com');
@@ -245,7 +270,7 @@ class SecurityTest extends TestCase
     public function test_desactivar_cuenta_bloquea_acceso_y_conserva_historial(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
         $this->post('/acceder', ['email' => 'a@test.com', 'password' => self::PASS]);
         $this->post('/salir');
 
@@ -264,7 +289,7 @@ class SecurityTest extends TestCase
     public function test_no_se_puede_desactivar_al_ultimo_admin_ni_asignar_500(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
 
         $this->actingAs($admin)->patch("/admin/usuarios/{$admin->id}/estado")->assertSessionHas('error');
         $this->actingAs($admin)->patch("/admin/usuarios/{$u->id}/nivel", ['role_level' => 500])->assertSessionHasErrors('role_level');
@@ -275,7 +300,7 @@ class SecurityTest extends TestCase
     public function test_500_modifica_datos_de_otro_usuario(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
 
         $this->actingAs($admin)->patch("/admin/usuarios/{$u->id}", ['name' => 'Nombre Nuevo', 'email' => 'nuevo@test.com'])->assertSessionHas('status');
         $this->assertSame('nuevo@test.com', $u->fresh()->email);
@@ -288,7 +313,7 @@ class SecurityTest extends TestCase
     public function test_500_ve_el_hash_solo_con_su_clave_y_queda_auditado(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
 
         $this->actingAs($admin)->post("/admin/usuarios/{$u->id}/hash", ['admin_password' => 'mala'])->assertSessionHasErrors('admin_password');
         $this->assertDatabaseHas('audit_logs', ['event' => 'hash_viewed', 'result' => 'denied']);
@@ -298,16 +323,45 @@ class SecurityTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'hash_viewed', 'result' => 'success', 'target_user_id' => $u->id]);
     }
 
+    public function test_hash_is_withheld_if_the_audit_write_fails(): void
+    {
+        $admin = $this->makeUser(500, 'adm@test.com');
+        $user = $this->makeUser(300, 'a@test.com');
+
+        AuditLog::creating(fn () => throw new \RuntimeException('Auditoría temporalmente indisponible'));
+
+        $this->actingAs($admin)->post(route('admin.users.hash.show', $user), ['admin_password' => self::PASS])
+            ->assertStatus(503)->assertDontSee($user->password, false);
+    }
+
+    public function test_a_new_password_invalidates_a_pending_reset_link(): void
+    {
+        $admin = $this->makeUser(500, 'adm@test.com');
+        $user = $this->makeUser(300, 'a@test.com');
+        $this->actingAs($admin)->post(route('admin.users.reset', $user))->assertSessionHas('reset_link');
+        $link = session('reset_link');
+
+        $this->flushSession();
+        $this->actingAs($user)->put(route('profile.password'), [
+            'current_password' => self::PASS,
+            'password' => 'Marca#Nautica-2026!',
+            'password_confirmation' => 'Marca#Nautica-2026!',
+        ])->assertSessionHasNoErrors();
+
+        auth()->logout();
+        $this->get($link)->assertStatus(410);
+    }
+
     // --- Restablecimiento con enlace de un solo uso ----------------------------
     public function test_restablecimiento_enlace_unico_con_vencimiento(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
         $this->post('/recuperar-clave', ['email' => 'a@test.com']);
         $this->assertNotNull($u->fresh()->temp_requested_at);
 
         $this->actingAs($admin)->post("/admin/usuarios/{$u->id}/restablecer")->assertSessionHas('reset_link');
-        $link  = session('reset_link');
+        $link = session('reset_link');
         $token = basename($link);
         auth()->logout();
 
@@ -331,12 +385,12 @@ class SecurityTest extends TestCase
     public function test_enlace_vencido_o_invalido_es_rechazado(): void
     {
         $admin = $this->makeUser(500, 'adm@test.com');
-        $u     = $this->makeUser(300, 'a@test.com');
+        $u = $this->makeUser(300, 'a@test.com');
         $this->actingAs($admin)->post("/admin/usuarios/{$u->id}/restablecer");
         $token = basename(session('reset_link'));
         auth()->logout();
 
-        $this->get('/restablecer/' . str_repeat('a', 64))->assertStatus(410);
+        $this->get('/restablecer/'.str_repeat('a', 64))->assertStatus(410);
         $this->get('/restablecer/no-es-un-token')->assertStatus(410);
 
         Carbon::setTestNow(now()->addMinutes(31));

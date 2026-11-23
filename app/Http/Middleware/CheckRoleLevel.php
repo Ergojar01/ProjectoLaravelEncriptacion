@@ -14,8 +14,8 @@ class CheckRoleLevel
     {
         $user = Auth::user();
 
-        if (! $user || (int) $user->role_level < $level) {
-            Audit::log('access_denied', Audit::DENIED, $user, null, null, $request->method() . ' /' . ltrim($request->path(), '/') . " (requiere nivel {$level})");
+        if (! $user || ! in_array($user->role_level, $level === 500 ? [500] : [499, 500], true)) {
+            Audit::log('access_denied', Audit::DENIED, $user, null, null, $request->route()->getName());
             abort(403, 'No tienes permiso para acceder a esta sección.');
         }
 

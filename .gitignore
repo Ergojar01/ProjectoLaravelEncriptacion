@@ -32,12 +32,17 @@ Homestead.yaml
 /.idea
 /.vscode
 
-# Ignorar la persistencia de datos de MySQL en Docker
-/docker/mysql/data.env
+# Secretos y copias de datos
 .env
-.env
-.env.save
-
-# Respaldos reales (los de entrega ficticios van en database/backup/)
-/backups/*
-!/backups/.gitkeep
+.env.*
+!.env.example
+*.sql
+!scripts/privilegios_minimos.sql
+*.sql.*
+*.enc
+*.gpg
+*.sqlite
+*.sqlite-*
+*.pem
+*.key
+/backups/

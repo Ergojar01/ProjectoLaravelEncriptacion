@@ -1,0 +1,9 @@
+**
+!docker/
+!docker/apache/
+!docker/apache/*.conf
+!docker/php/
+!docker/php/Dockerfile
+!docker/mysql/
+!docker/mysql/Dockerfile
+!docker/mysql/10-privileges.sh

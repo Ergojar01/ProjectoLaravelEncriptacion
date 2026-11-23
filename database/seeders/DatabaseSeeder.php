@@ -19,11 +19,19 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        if (! config('security.demo_seed')) {
+            throw new \RuntimeException('Las cuentas ficticias solo se crean con SECURITY_DEMO_SEED=true en el laboratorio.');
+        }
+
         foreach (self::ACCOUNTS as [$name, $email, $password, $level]) {
             $user = User::firstOrNew(['email' => $email]);
-            $user->name       = $name;
+            if ($user->exists) {
+                continue;
+            }
+
+            $user->name = $name;
             $user->role_level = $level;
-            $user->is_active  = true;
+            $user->is_active = true;
             Credentials::apply($user, $password);
             $user->save();
         }

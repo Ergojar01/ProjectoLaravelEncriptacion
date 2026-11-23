@@ -48,6 +48,19 @@ docker compose up -d app
 
 Abre **https://localhost**. El certificado autofirmado se limita al laboratorio. Configura un transporte SMTP para enviar enlaces de recuperación. En un laboratorio sin SMTP, `RESET_SHOW_LINK=true` muestra el enlace de prueba al administrador. Mantén esta opción desactivada con cuentas reales.
 
+### Consultar MySQL con phpMyAdmin
+
+Desde la raíz del proyecto, carga los mismos archivos de entorno e inicia el servicio opcional.
+
+```bash
+export COMPOSE_ENV_FILES=".env,$HOME/.config/secureaccess/mysql.env"
+docker compose up -d phpmyadmin
+```
+
+Abre [http://localhost:8081](http://localhost:8081), entra como `laravel_user` con el valor de `DB_PASSWORD` de tu `.env` y selecciona `laravel_roles`. phpMyAdmin solo escucha en el equipo local. Laravel sigue disponible por HTTPS y MySQL queda en la red interna de Compose.
+
+Para cerrar la interfaz, ejecuta `docker compose stop phpmyadmin`.
+
 ## Controles de seguridad implementados
 | Requisito del PDF | Implementación |
 |---|---|

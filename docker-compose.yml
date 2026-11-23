@@ -44,6 +44,18 @@ services:
       timeout: 3s
       retries: 30
 
+  phpmyadmin:
+    image: phpmyadmin:5.2-apache
+    profiles: [lab]
+    ports:
+      - "127.0.0.1:8081:80"
+    environment:
+      PMA_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [frontend, database]
+
 networks:
   frontend:
   database:

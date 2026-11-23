@@ -36,6 +36,10 @@ El script se encarga automáticamente de:
 
 Copia `.env.example` a `.env` solo si es una instalación nueva. Configura `DB_PASSWORD` y `CRYPTO_PEPPER` en el `.env` de Laravel. Para cuentas existentes, conserva el `APP_KEY`, `CRYPTO_PEPPER` y los parámetros criptográficos originales. Guarda las credenciales privilegiadas fuera del directorio montado por el contenedor de la aplicación.
 
+### Sobre el pepper
+
+El **pepper** es una cadena secreta de al menos 64 caracteres hexadecimales (`CRYPTO_PEPPER`) que se define en el archivo `.env` del proyecto y **nunca** debe almacenarse en el repositorio. Sirve como clave adicional al generar el **HMAC‑SHA‑512** que protege las contraseñas mediante `CredentialHash`. Si cambias el pepper, todas las contraseñas existentes quedan inválidas y deben volver a crearse. Mantén este valor confidencial y cámbialo sólo en entornos controlados.
+
 ```bash
 chmod 600 .env
 install -d -m 700 "$HOME/.config/secureaccess"

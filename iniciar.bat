@@ -3,8 +3,8 @@ setlocal EnableExtensions DisableDelayedExpansion
 title One Piece Haki Encryption
 
 pushd "%~dp0" || goto error_folder
-set "HAKI_URL=https://localhost:8443"
-set "PMA_URL=http://127.0.0.1:8081"
+set "HAKI_URL=https://localhost:8443/"
+set "PMA_URL=http://127.0.0.1:8081/"
 set "HAKI_PROJECT=haki-prueba-entrega"
 set "HAKI_COMPOSE=docker compose --project-name %HAKI_PROJECT%"
 
@@ -38,16 +38,21 @@ if not exist vendor\autoload.php (
 )
 
 echo Esperando respuesta de Laravel...
-call :wait_http "%HAKI_URL%/" --insecure
+call :wait_http "%HAKI_URL%" --insecure
 if errorlevel 1 goto diagnostics
 echo Esperando respuesta de phpMyAdmin...
-call :wait_http "%PMA_URL%/"
+call :wait_http "%PMA_URL%"
 if errorlevel 1 goto diagnostics
 
 echo Laravel: %HAKI_URL%
 echo phpMyAdmin: %PMA_URL%
-start "" "%HAKI_URL%"
-start "" "%PMA_URL%"
+set "HAKI_BROWSER_FAILED="
+start "" "%HAKI_URL%" || set "HAKI_BROWSER_FAILED=1"
+start "" "%PMA_URL%" || set "HAKI_BROWSER_FAILED=1"
+if defined HAKI_BROWSER_FAILED (
+    echo [AVISO] Si una pagina no se abrio, copia su direccion en el navegador.
+    pause
+)
 popd
 exit /b 0
 

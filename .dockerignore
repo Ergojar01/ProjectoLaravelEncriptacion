@@ -7,3 +7,4 @@
 !docker/mysql/
 !docker/mysql/Dockerfile
 !docker/mysql/10-privileges.sh
+!docker/mysql/20-init-data.sql

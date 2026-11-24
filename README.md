@@ -11,14 +11,15 @@ Aplicación web en **PHP 8.4 / Laravel 13 / MySQL 8** (Docker + Apache con HTTPS
 
 ## Instalación y ejecución
 
-### Opción 1: Ejecución rápida 
+### Opción 1: Ejecución rápida en Windows
 
-En **Windows**, extrae el proyecto completo, coloca el `.env` preparado para la demo junto a `docker-compose.yml` y abre Docker Desktop. Haz doble clic en `iniciar.bat`.
+1. **Extrae el ZIP completo en `C:\proyectos\Proyecto Final`**. Usa esa ruta para evitar posibles conflictos de permisos al iniciar Docker desde una carpeta en el Escritorio.
+2. **Abre la carpeta extraída** y verifica que `iniciar.bat`, `docker-compose.yml` y el `.env` preparado para la demo estén juntos.
+3. **Abre Docker Desktop** y espera a que esté en ejecución.
+4. **Haz doble clic en `iniciar.bat`**. El script inicia Laravel, MySQL y phpMyAdmin en el proyecto Compose `haki-prueba-entrega`. Si el volumen de MySQL es nuevo, se inicializa con los datos de prueba.
+5. **Espera a que se abran las dos páginas**. Laravel se abre en [https://localhost:8443/](https://localhost:8443/) y usa un certificado local autofirmado. En [phpMyAdmin](http://127.0.0.1:8081/), inicia sesión como `laravel_user` con el valor de `DB_PASSWORD` del `.env` de demo y selecciona `laravel_roles`.
 
-- El script inicia Laravel, MySQL y phpMyAdmin en el proyecto Compose `haki-prueba-entrega`. Si el volumen es nuevo, MySQL lo inicializa con los datos de prueba.
-- Abre Laravel en [https://localhost:8443](https://localhost:8443) y phpMyAdmin en [http://127.0.0.1:8081](http://127.0.0.1:8081) cuando las páginas responden. Laravel usa un certificado local autofirmado.
-- En phpMyAdmin, inicia sesión con `laravel_user` y el valor de `DB_PASSWORD` del `.env` de demo. Selecciona la base `laravel_roles`.
-- Si los puertos 8080, 8443 u 8081 están ocupados por otra instancia, detén sus contenedores antes de iniciar la demo. Para detener esta demo, ejecuta `docker compose --project-name haki-prueba-entrega stop` desde la carpeta del proyecto.
+Si otra instancia ocupa los puertos 8080, 8443 u 8081, detén sus contenedores antes de volver a ejecutar `iniciar.bat`. Para detener la demo, ejecuta `docker compose --project-name haki-prueba-entrega stop` desde la carpeta del proyecto.
 
 En **Linux / macOS**, ejecuta `./iniciar.sh` desde la raíz del proyecto.
 

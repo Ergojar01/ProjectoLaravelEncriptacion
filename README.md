@@ -18,7 +18,7 @@ En **Windows**, extrae el proyecto completo, coloca el `.env` preparado para la 
 - El script inicia Laravel, MySQL y phpMyAdmin en el proyecto Compose `haki-prueba-entrega`. Si el volumen es nuevo, MySQL lo inicializa con los datos de prueba.
 - Abre Laravel en [https://localhost:8443](https://localhost:8443) y phpMyAdmin en [http://127.0.0.1:8081](http://127.0.0.1:8081) cuando las páginas responden. Laravel usa un certificado local autofirmado.
 - En phpMyAdmin, inicia sesión con `laravel_user` y el valor de `DB_PASSWORD` del `.env` de demo. Selecciona la base `laravel_roles`.
-- Si los puertos 8080, 8443 u 8081 están ocupados por otra instancia, detén sus contenedores antes de iniciar la demo. Para detener esta demo, ejecuta `docker compose --project-name haki-prueba-entrega --profile lab stop` desde la carpeta del proyecto.
+- Si los puertos 8080, 8443 u 8081 están ocupados por otra instancia, detén sus contenedores antes de iniciar la demo. Para detener esta demo, ejecuta `docker compose --project-name haki-prueba-entrega stop` desde la carpeta del proyecto.
 
 En **Linux / macOS**, ejecuta `./iniciar.sh` desde la raíz del proyecto.
 
@@ -72,6 +72,8 @@ Abre **https://localhost**. El certificado autofirmado se limita al laboratorio.
 En el `.env` del laboratorio, configura `SECURITY_ALLOW_REGISTRATION=true` y ejecuta `docker compose up -d app`. Si usas la caché de configuración de Laravel, ejecuta también `docker compose exec app php artisan config:clear`. Pulsa **Crear cuenta** en la pantalla de inicio o abre [https://localhost/registro](https://localhost/registro). El registro crea cuentas de nivel 300 con la misma política de contraseñas que el alta administrativa. El ajuste está desactivado por defecto.
 
 ### Consultar MySQL con phpMyAdmin
+
+`docker compose up -d` inicia Laravel, MySQL y phpMyAdmin. Para volver a iniciar únicamente phpMyAdmin, usa el siguiente comando con los mismos archivos de entorno y el mismo nombre de proyecto.
 
 Desde la raíz del proyecto, carga los mismos archivos de entorno e inicia el servicio opcional.
 

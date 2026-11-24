@@ -142,7 +142,3 @@ docker compose -p haki-pruebas up -d --build --wait db
     -e DB_USERNAME=laravel_migrator -e DB_PASSWORD -e DB_URL= app php vendor/bin/phpunit
 )
 ```
-
-## Entrega
-
-`bash scripts/preparar_entrega.sh` empaqueta los archivos de la revisión actual de Git.

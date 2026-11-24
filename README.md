@@ -13,22 +13,14 @@ Aplicación web en **PHP 8.4 / Laravel 13 / MySQL 8** (Docker + Apache con HTTPS
 
 ### Opción 1: Ejecución rápida 
 
-Para ejecutar la aplicación con un solo comando, con los contenedores compilados y la base de datos preinicializada con los datos de prueba:
+En **Windows**, extrae el proyecto completo, coloca el `.env` preparado para la demo junto a `docker-compose.yml` y abre Docker Desktop. Haz doble clic en `iniciar.bat`.
 
-- **En Windows:**  
-  Haz doble clic en `iniciar.bat` (o ejecuta `iniciar.bat` desde PowerShell / CMD).
-- **En Linux / macOS:**  
-  Ejecuta `./iniciar.sh` en la terminal.
-- **Con Docker Compose directamente:**  
-  ```bash
-  docker compose up -d --build
-  ```
+- El script inicia Laravel, MySQL y phpMyAdmin en el proyecto Compose `haki-prueba-entrega`. Si el volumen es nuevo, MySQL lo inicializa con los datos de prueba.
+- Abre Laravel en [https://localhost:8443](https://localhost:8443) y phpMyAdmin en [http://127.0.0.1:8081](http://127.0.0.1:8081) cuando las páginas responden. Laravel usa un certificado local autofirmado.
+- En phpMyAdmin, inicia sesión con `laravel_user` y el valor de `DB_PASSWORD` del `.env` de demo. Selecciona la base `laravel_roles`.
+- Si los puertos 8080, 8443 u 8081 están ocupados por otra instancia, detén sus contenedores antes de iniciar la demo. Para detener esta demo, ejecuta `docker compose --project-name haki-prueba-entrega --profile lab stop` desde la carpeta del proyecto.
 
-El script se encarga automáticamente de:
-1. Validar e iniciar los contenedores en segundo plano (`app` y `db`).
-2. Restaurar la base de datos completa con sus usuarios de prueba (`docker/mysql/20-init-data.sql`).
-3. Inicializar y configurar los permisos necesarios en los directorios de almacenamiento (`storage/framework`).
-4. Abrir la aplicación directamente en **https://localhost** *(recuerda aceptar la advertencia del certificado autofirmado)*.
+En **Linux / macOS**, ejecuta `./iniciar.sh` desde la raíz del proyecto.
 
 ---
 

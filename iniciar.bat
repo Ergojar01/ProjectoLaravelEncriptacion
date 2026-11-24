@@ -6,7 +6,7 @@ pushd "%~dp0" || goto error_folder
 set "HAKI_URL=https://localhost:8443"
 set "PMA_URL=http://127.0.0.1:8081"
 set "HAKI_PROJECT=haki-prueba-entrega"
-set "HAKI_COMPOSE=docker compose --project-name %HAKI_PROJECT% --profile lab"
+set "HAKI_COMPOSE=docker compose --project-name %HAKI_PROJECT%"
 
 if not exist docker-compose.yml (
     echo [ERROR] Extrae el ZIP completo y coloca iniciar.bat junto a docker-compose.yml.
@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 
 echo Iniciando Laravel, MySQL y phpMyAdmin...
-%HAKI_COMPOSE% up -d app db phpmyadmin
+%HAKI_COMPOSE% up -d
 if errorlevel 1 goto diagnostics
 
 if not exist vendor\autoload.php (

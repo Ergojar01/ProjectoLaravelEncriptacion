@@ -1,101 +1,80 @@
 @echo off
-setlocal
+setlocal EnableExtensions DisableDelayedExpansion
 title One Piece Haki Encryption
-echo ==================================================
-echo   Iniciando One Piece Haki Encryption...
-echo ==================================================
-echo.
 
-rem ---- Verificar que Docker este corriendo ---------------------
+pushd "%~dp0" || goto error_folder
+set "HAKI_URL=https://localhost:8443"
+set "PMA_URL=http://127.0.0.1:8081"
+set "HAKI_PROJECT=haki-prueba-entrega"
+set "HAKI_COMPOSE=docker compose --project-name %HAKI_PROJECT% --profile lab"
+
+if not exist docker-compose.yml (
+    echo [ERROR] Extrae el ZIP completo y coloca iniciar.bat junto a docker-compose.yml.
+    goto error
+)
+if not exist .env (
+    echo [ERROR] Falta el archivo .env preparado para la demo.
+    goto error
+)
 docker info >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Docker no esta corriendo.
-    echo         Abre Docker Desktop y vuelve a ejecutar este script.
-    echo.
-    pause
-    exit /b 1
+    echo [ERROR] Abre Docker Desktop y vuelve a ejecutar iniciar.bat.
+    goto error
 )
-
-rem ---- Crear .env si no existe ---------------------------------
-if not exist .env (
-    if exist .env.example (
-        echo [1/4] Creando archivo .env desde .env.example...
-        copy .env.example .env >nul
-        echo       Archivo .env creado.
-        echo.
-        echo [IMPORTANTE] Debes configurar los siguientes valores en .env
-        echo   antes de continuar:
-        echo     - APP_KEY          ^(ejecuta: docker compose run --rm --no-deps app php artisan key:generate^)
-        echo     - CRYPTO_PEPPER    ^(ejecuta en WSL/Git Bash: openssl rand -hex 32^)
-        echo     - DB_PASSWORD
-        echo     - DB_ROOT_PASSWORD
-        echo     - DB_MIGRATION_PASSWORD
-        echo.
-        echo   Edita el archivo .env, completa esos campos y vuelve a ejecutar este script.
-        echo.
-        pause
-        exit /b 1
-    ) else (
-        echo [ERROR] No se encontro .env ni .env.example
-        pause
-        exit /b 1
-    )
-)
-
-rem ---- Detener contenedores anteriores -------------------------
-echo [1/4] Deteniendo contenedores anteriores...
-docker compose down >nul 2>&1
-
-rem ---- Levantar contenedores -----------------------------------
-echo [2/4] Compilando y levantando contenedores...
-docker compose up -d --build
+where curl.exe >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo [ERROR] Fallo al levantar los contenedores.
-    echo         Revisa los mensajes de arriba para mas detalles.
-    echo.
-    pause
-    exit /b 1
+    echo [ERROR] Windows necesita curl.exe para comprobar que la demo este disponible.
+    goto error
 )
 
-rem ---- Esperar a que los servicios esten listos ----------------
-echo [3/4] Esperando a que los servicios inicien...
-echo       (esto puede tomar 15-30 segundos)
+echo Iniciando Laravel, MySQL y phpMyAdmin...
+%HAKI_COMPOSE% up -d app db phpmyadmin
+if errorlevel 1 goto diagnostics
 
-set /a intentos=0
-:esperar_db
-set /a intentos+=1
-if %intentos% gtr 30 (
-    echo.
-    echo [AVISO] MySQL tardo demasiado en arrancar.
-    echo         La aplicacion puede no estar lista aun.
-    goto abrir
+if not exist vendor\autoload.php (
+    echo Instalando las dependencias de Laravel...
+    %HAKI_COMPOSE% exec -T -e COMPOSER_ALLOW_SUPERUSER=1 app composer install --no-dev --no-interaction --prefer-dist
+    if errorlevel 1 goto diagnostics
+)
+
+echo Esperando respuesta de Laravel...
+call :wait_http "%HAKI_URL%/" --insecure
+if errorlevel 1 goto diagnostics
+echo Esperando respuesta de phpMyAdmin...
+call :wait_http "%PMA_URL%/"
+if errorlevel 1 goto diagnostics
+
+echo Laravel: %HAKI_URL%
+echo phpMyAdmin: %PMA_URL%
+start "" "%HAKI_URL%"
+start "" "%PMA_URL%"
+popd
+exit /b 0
+
+:wait_http
+set /a HAKI_ATTEMPTS=0
+:probe
+curl.exe --disable --noproxy "*" %~2 --fail --silent --max-time 3 --output NUL "%~1"
+if not errorlevel 1 exit /b 0
+set /a HAKI_ATTEMPTS+=1
+if %HAKI_ATTEMPTS% geq 20 (
+    echo [ERROR] No se pudo abrir %~1
+    curl.exe --disable --noproxy "*" %~2 --silent --show-error --max-time 5 --output NUL --write-out "HTTP %%{http_code}\n" "%~1"
+    exit /b 1
 )
 timeout /t 2 /nobreak >nul
-docker compose exec -T db mysqladmin ping -h 127.0.0.1 --silent >nul 2>&1
-if errorlevel 1 goto esperar_db
+goto probe
 
-echo       MySQL listo.
-timeout /t 3 /nobreak >nul
+:diagnostics
+%HAKI_COMPOSE% ps -a
+%HAKI_COMPOSE% logs --tail 15 app db phpmyadmin
 
-rem ---- Abrir navegador -----------------------------------------
-:abrir
-echo [4/4] Abriendo aplicacion en el navegador...
-start https://localhost:8443
-
-echo.
-echo ==================================================
-echo   Listo! Aplicacion corriendo en:
-echo   https://localhost:8443
-echo.
-echo   (Acepta la advertencia del certificado autofirmado)
-echo.
-echo   Credenciales de prueba:
-echo   - Admin 500:      admin500@haki.test  / Capitan#Haki-500!
-echo   - Supervisor 499: visor499@haki.test  / Vigia#Haki-4999!
-echo   - Estandar 300:   basico300@haki.test / Nakama#Haki-3000!
-echo ==================================================
-echo.
-echo   Para detener: docker compose down
-echo.
+:error
 pause
+popd
+exit /b 1
+
+:error_folder
+echo [ERROR] No se pudo abrir la carpeta del proyecto.
+pause
+exit /b 1
